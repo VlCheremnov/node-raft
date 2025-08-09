@@ -1,0 +1,33 @@
+{
+  "name": "raft",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/VlCheremnov/node-raft.git"
+  },
+  "keywords": [
+    "raft"
+  ],
+  "author": "VladislavCheremnov",
+  "license": "MIT",
+  "bugs": {
+    "url": "https://github.com/VlCheremnov/node-raft/issues"
+  },
+  "homepage": "https://github.com/VlCheremnov/node-raft#readme",
+  "devDependencies": {
+    "@types/node": "^24.2.1",
+    "eslint": "^9.33.0",
+    "eslint-config-prettier": "^10.1.8",
+    "eslint-plugin": "^1.0.1",
+    "eslint-plugin-prettier": "^5.5.4",
+    "nodemon": "^3.1.10",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.9.2",
+    "typescript-eslint": "^8.39.0"
+  }
+}
