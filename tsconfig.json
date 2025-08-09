@@ -37,12 +37,12 @@
 //      "@lib/shared/*": [
 //        "libs/shared/src/*"
 //      ],
-//      "@lib/tcp-transport": [
-//        "libs/tcp-transport/src"
-//      ],
-//      "@lib/tcp-transport/*": [
-//        "libs/tcp-transport/src/*"
-//      ]
+      "@tcp-transport": [
+        "src/tcp-transport"
+      ],
+      "@tcp-transport/*": [
+        "src/tcp-transport/*"
+      ]
     }
   }
 }
