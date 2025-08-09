@@ -1,6 +1,5 @@
 {
   "compilerOptions": {
-    "inlineSources": true,
     "module": "commonjs",
     "declaration": true,
     "removeComments": true,
@@ -17,32 +16,6 @@
     "forceConsistentCasingInFileNames": true,
     "noImplicitAny": false,
     "strictBindCallApply": false,
-    "noFallthroughCasesInSwitch": false,
-    "paths": {
-//      "@lib/database": [
-//        "libs/database/src"
-//      ],
-//      "@lib/database/*": [
-//        "libs/database/src/*"
-//      ],
-//      "@lib/gossip": [
-//        "libs/gossip/src"
-//      ],
-//      "@lib/gossip/*": [
-//        "libs/gossip/src/*"
-//      ],
-//      "@lib/shared": [
-//        "libs/shared/src"
-//      ],
-//      "@lib/shared/*": [
-//        "libs/shared/src/*"
-//      ],
-      "@tcp-transport": [
-        "src/tcp-transport"
-      ],
-      "@tcp-transport/*": [
-        "src/tcp-transport/*"
-      ]
-    }
+    "noFallthroughCasesInSwitch": false
   }
 }
