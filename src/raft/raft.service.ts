@@ -1,16 +1,11 @@
 import { Injectable, OnModuleInit } from '@nestjs/common'
 
-import {
-  AppendEntriesParams,
-  AppendEntriesResult,
-  RequestVoteParams,
-  RequestVoteResult,
-  LogEntry,
-  ServerConfig,
-} from './types'
+import { AppendEntriesResult, RequestVoteResult, ServerConfig } from './types'
 
 import { State } from './enum'
 import { ConfigService } from '@nestjs/config'
+import { RequestVoteDto } from './dto/request-vote.dto'
+import { AppendEntriesDto, LogEntryDto } from './dto/append-entries.dto'
 
 @Injectable()
 export class RaftService implements OnModuleInit {
@@ -20,7 +15,7 @@ export class RaftService implements OnModuleInit {
   /* Текущий срок (увеличивается на стадии кандидата или при выборе нового лидера) */
   private currentTerm: number = 0
   /* Упорядоченный список записей */
-  private log: LogEntry[] = [{ index: 0, term: 0, command: null }]
+  private log: LogEntryDto[] = [{ index: 0, term: 0, command: null }]
   /* Индекс последней зафиксированной записи в логе */
   private commitIndex: number = 0
   /* Индекс последней записи в логе */
@@ -76,10 +71,10 @@ export class RaftService implements OnModuleInit {
 
   /**
    * Запрашивает голос для выборов лидера
-   * @param {RequestVoteParams} params - Параметры запроса голосования
+   * @param {RequestVoteDto} params - Параметры запроса голосования
    * @returns {RequestVoteResult} Результат голосования
    */
-  public RequestVote(params: RequestVoteParams): RequestVoteResult {
+  public RequestVote(params: RequestVoteDto): RequestVoteResult {
     if (params.term < this.currentTerm) {
       return { term: this.currentTerm, voteGranted: false }
     }
@@ -109,10 +104,10 @@ export class RaftService implements OnModuleInit {
 
   /**
    * Обработка запроса от лидера
-   * @param {AppendEntriesParams} params - Параметры запроса
-   * @returns {AppendEntriesResult} Ответ
+   * @param {AppendEntriesDto} params - Параметры запроса
+   * @returns {AppendEntriesResult}
    * */
-  public AppendEntries(params: AppendEntriesParams): AppendEntriesResult {
+  public AppendEntries(params: AppendEntriesDto): AppendEntriesResult {
     if (params.term < this.currentTerm) {
       return { term: this.currentTerm, success: false }
     }
@@ -187,7 +182,7 @@ export class RaftService implements OnModuleInit {
     const promises = this.config.servers.map((addr, i) => {
       if (i === this.config.index) return { voteGranted: true } // Сам себе vote
 
-      const params: RequestVoteParams = {
+      const params: RequestVoteDto = {
         term: this.currentTerm,
         candidateId: this.config.index,
         lastLogIndex: this.log.length - 1,
@@ -242,7 +237,7 @@ export class RaftService implements OnModuleInit {
       const prevLogIndex = this.nextIndex[i] - 1
       const entries = this.log.slice(this.nextIndex[i])
 
-      const params: AppendEntriesParams = {
+      const params: AppendEntriesDto = {
         term: this.currentTerm,
         leaderId: this.config.index,
         prevLogIndex,
@@ -299,22 +294,6 @@ export class RaftService implements OnModuleInit {
   }
 
   /**
-   * Применить логи к KV хранилище
-   * @returns {void}
-   * */
-  private applyLogs(): void {
-    while (this.lastApplied < this.commitIndex) {
-      this.lastApplied++
-
-      const entry = this.log[this.lastApplied]
-
-      if (entry.command) {
-        this.kvStore.set(entry.command.key, entry.command.value)
-      }
-    }
-  }
-
-  /**
    * Сброс таймаута выборов
    * @returns {void}
    * */
@@ -332,16 +311,32 @@ export class RaftService implements OnModuleInit {
   }
 
   /**
+   * Применить логи к KV хранилище
+   * @returns {void}
+   * */
+  private applyLogs(): void {
+    while (this.lastApplied < this.commitIndex) {
+      this.lastApplied++
+
+      const entry = this.log[this.lastApplied]
+
+      if (entry.command) {
+        this.kvStore.set(entry.command.key, entry.command.value)
+      }
+    }
+  }
+
+  /**
    * Создаем записи в KV хранилище
    * @property {string} key - Ключ
    * @property {string} value - Значение
    * @returns {boolean}
    * */
-  public setKey(key: string, value: string): boolean {
+  public setValue(key: string, value: string): boolean {
     // Только лидер может принимать изменения
     if (this.state !== State.Leader) return false
 
-    const entry: LogEntry = {
+    const entry: LogEntryDto = {
       index: this.log.length,
       term: this.currentTerm,
       command: { key, value },
@@ -357,7 +352,7 @@ export class RaftService implements OnModuleInit {
    * @property {string} key - Ключ
    * @returns {string|undefined}
    * */
-  public getKey(key: string): string | undefined {
+  public getValue(key: string): string | undefined {
     return this.kvStore.get(key)
   }
 
