@@ -72,7 +72,7 @@ export class RaftService implements OnModuleInit {
   /**
    * Запрашивает голос для выборов лидера
    * @param {RequestVoteDto} params - Параметры запроса голосования
-   * @returns {RequestVoteResult} Результат голосования
+   * @returns {type RequestVoteResult} Результат голосования
    */
   public RequestVote(params: RequestVoteDto): RequestVoteResult {
     if (params.term < this.currentTerm) {
@@ -105,7 +105,7 @@ export class RaftService implements OnModuleInit {
   /**
    * Обработка запроса от лидера
    * @param {AppendEntriesDto} params - Параметры запроса
-   * @returns {AppendEntriesResult}
+   * @returns {type AppendEntriesResult}
    * */
   public AppendEntries(params: AppendEntriesDto): AppendEntriesResult {
     if (params.term < this.currentTerm) {
@@ -124,7 +124,7 @@ export class RaftService implements OnModuleInit {
     /* Проверка актуальности */
     if (
       params.prevLogIndex >= this.log.length ||
-      this.log[params.prevLogIndex].term !== params.prevLogTerm
+      this.log[params.prevLogIndex]?.term !== params.prevLogTerm
     ) {
       return { term: this.currentTerm, success: false }
     }
@@ -155,7 +155,7 @@ export class RaftService implements OnModuleInit {
 
   /**
    * После истечения таймаута запускаем голосование на переизбрания лидера
-   * @returns {Promise<void>}
+   * @returns {Promise void}
    * */
   private async handleElectionTimeout(): Promise<void> {
     if (this.state === State.Leader) return
@@ -176,7 +176,7 @@ export class RaftService implements OnModuleInit {
 
   /**
    * Запрос для RequestVote и подсчет голосов (HTTP POST к другим нодам)
-   * @returns {Promise<boolean>}
+   * @returns {Promise boolean}
    * */
   private async sendRequestVote(): Promise<boolean> {
     const promises = this.config.servers.map((addr, i) => {
@@ -215,7 +215,7 @@ export class RaftService implements OnModuleInit {
     this.matchIndex.fill(0)
 
     /* Отправляем heartbeat сразу при переизбрании */
-    this.sendHeartbeat()
+    // this.sendHeartbeat()
 
     this.heartbeatInterval = setInterval(
       () => this.sendHeartbeat(),
@@ -226,7 +226,7 @@ export class RaftService implements OnModuleInit {
 
   /**
    * Отправляем heartbeat на другие ноды
-   * @returns {Promise<void>}
+   * @returns {Promise void}
    * */
   private async sendHeartbeat(): Promise<void> {
     if (this.state !== State.Leader) return
@@ -241,7 +241,10 @@ export class RaftService implements OnModuleInit {
         term: this.currentTerm,
         leaderId: this.config.index,
         prevLogIndex,
-        prevLogTerm: prevLogIndex >= 0 ? this.log[prevLogIndex].term : 0,
+        prevLogTerm:
+          prevLogIndex >= 0 && this.log[prevLogIndex]
+            ? this.log[prevLogIndex].term
+            : 0,
         entries,
         leaderCommit: this.commitIndex,
       }
@@ -252,26 +255,45 @@ export class RaftService implements OnModuleInit {
         body: JSON.stringify(params),
       })
         .then((res) => res.json() as Promise<AppendEntriesResult>)
-        .then((result) => {
-          if (result.success) {
-            /* Успешный запрос - обновляем индексы ноды */
-            this.nextIndex[i] = this.log.length
-            this.matchIndex[i] = this.log.length - 1
-            this.updateCommitIndex()
-          } else if (result.term > this.currentTerm) {
-            /* Данные лидера не актуальны - откатываем состояние до фоловера и ждем переизбрания */
-            this.state = State.Follower
-            this.currentTerm = result.term
-          } else {
-            /* Данные в nextIndex по текущей ноде не актуальны, откатываем и пробуем еще дальше */
-            this.nextIndex[i]--
-          }
-          return result
-        })
-        .catch(() => ({ success: false }))
+        .then((result) => this.handleHeartbeatResponse(result, i))
+        .catch(() => this.handleHeartbeatError())
     })
 
     await Promise.allSettled(promises)
+  }
+
+  /**
+   * Обрабатываем ответ heartbeat от другой ноды
+   * @param {AppendEntriesResult} result - Ответ ноды
+   * @param {number} index - Индекс ноды, от которой поступил ответ
+   * @returns {type AppendEntriesResult}
+   * */
+  private handleHeartbeatResponse(
+    result: AppendEntriesResult,
+    index: number
+  ): AppendEntriesResult {
+    if (result.success) {
+      /* Успешный запрос - обновляем индексы ноды */
+      this.nextIndex[index] = this.log.length
+      this.matchIndex[index] = this.log.length - 1
+      this.updateCommitIndex()
+    } else if (result.term > this.currentTerm) {
+      /* Данные лидера не актуальны - откатываем состояние до фоловера и ждем переизбрания */
+      this.state = State.Follower
+      this.currentTerm = result.term
+    } else {
+      /* Данные в nextIndex по текущей ноде не актуальны, откатываем и пробуем еще дальше */
+      this.nextIndex[index]--
+    }
+    return result
+  }
+
+  /**
+   * Обрабатываем ошибку heartbeat от другой ноды
+   * @returns {Object}
+   * */
+  private handleHeartbeatError(): { success: boolean } {
+    return { success: false }
   }
 
   /**
@@ -294,15 +316,26 @@ export class RaftService implements OnModuleInit {
   }
 
   /**
+   * Рандомное число от и до
+   * @param {number} min - Минимальное число
+   * @param {number} max - Максимальное число
+   * @returns {number} Рандомное число
+   * */
+  getRandomNumber(min: number, max: number): number {
+    return Math.floor(Math.random() * (max - min + 1)) + min
+  }
+
+  /**
    * Сброс таймаута выборов
    * @returns {void}
    * */
   private resetElectionTimeout(): void {
     if (this.electionTimeout) clearTimeout(this.electionTimeout)
 
-    const timeoutMs =
-      Math.floor(Math.random() * this.config.electionTimeoutMinMs) +
-      (this.config.electionTimeoutMaxMs - this.config.electionTimeoutMinMs)
+    const timeoutMs = this.getRandomNumber(
+      this.config.electionTimeoutMinMs,
+      this.config.electionTimeoutMaxMs
+    )
 
     this.electionTimeout = setTimeout(
       () => this.handleElectionTimeout(),
@@ -350,7 +383,7 @@ export class RaftService implements OnModuleInit {
   /**
    * Получить значение из KV хранилища
    * @property {string} key - Ключ
-   * @returns {string|undefined}
+   * @returns {string | undefined}
    * */
   public getValue(key: string): string | undefined {
     return this.kvStore.get(key)
@@ -358,7 +391,7 @@ export class RaftService implements OnModuleInit {
 
   /**
    * Получить текущее состояние ноды
-   * @returns {State}
+   * @returns {enum State}
    * */
   public getState(): State {
     return this.state
