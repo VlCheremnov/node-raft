@@ -70,6 +70,18 @@ export class RaftService implements OnModuleInit {
   }
 
   /**
+   * Останавливает все таймеры
+   */
+  public stop() {
+    if (this.electionTimeout) {
+      clearTimeout(this.electionTimeout)
+    }
+    if (this.heartbeatInterval) {
+      clearInterval(this.heartbeatInterval)
+    }
+  }
+
+  /**
    * Запрашивает голос для выборов лидера
    * @param {RequestVoteDto} params - Параметры запроса голосования
    * @returns {type RequestVoteResult} Результат голосования
@@ -367,6 +379,7 @@ export class RaftService implements OnModuleInit {
    * */
   public setValue(key: string, value: string): boolean {
     // Только лидер может принимать изменения
+    /* todo: Перенаправить на лидера */
     if (this.state !== State.Leader) return false
 
     const entry: LogEntryDto = {

@@ -14,7 +14,13 @@ async function bootstrap() {
   const configService = app.get(ConfigService)
   const port = configService.get<number>('PORT', 3000)
 
-  app.useGlobalPipes(new ValidationPipe())
+  app.useGlobalPipes(
+    new ValidationPipe({
+      transform: true, // Включает class-transformer для типов
+      whitelist: true, // Удаляет лишние свойства из DTO
+      transformOptions: { enableImplicitConversion: true },
+    })
+  )
 
   await app.listen(port)
 }
