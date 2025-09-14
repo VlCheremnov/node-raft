@@ -1,39 +1,16 @@
-import { Injectable, OnModuleInit } from '@nestjs/common'
+import { Inject, Injectable, OnModuleInit } from '@nestjs/common'
 
-import { AppendEntriesResult, RequestVoteResult, ServerConfig } from './types'
+import { AppendEntriesResult, RequestVoteResult } from './../types'
+import { RaftInterface, ServerConfig } from './raft.interface'
 
-import { State } from './enum'
+import { State } from './../enum'
 import { ConfigService } from '@nestjs/config'
-import { RequestVoteDto } from './dto/request-vote.dto'
-import { AppendEntriesDto, LogEntryDto } from './dto/append-entries.dto'
+import { RequestVoteDto } from './../dto/request-vote.dto'
+import { AppendEntriesDto, LogEntryDto } from './../dto/append-entries.dto'
+import { StorageInterface } from '../storage/storage.interface'
 
 @Injectable()
-export class RaftService implements OnModuleInit {
-  /** Параметры узла */
-  /* Текущее состояние узла */
-  private state: State = State.Follower
-  /* Текущий срок (увеличивается на стадии кандидата или при выборе нового лидера) */
-  private currentTerm: number = 0
-  /* Упорядоченный список записей */
-  private log: LogEntryDto[] = [{ index: 0, term: 0, command: null }]
-  /* Индекс последней зафиксированной записи в логе */
-  private commitIndex: number = 0
-  /* Индекс последней записи в логе */
-  private lastApplied: number = 0
-
-  /** Стадия выбора */
-  /* За кого голосует текущий узел */
-  private votedFor: number | null = null
-
-  /** Параметры лидера */
-  /* Индекс следующей записи лога каждого фоловера */
-  private nextIndex: number[]
-  /* Индекс последней записи лога каждого фоловера */
-  private matchIndex: number[]
-
-  /** key/value хранилище */
-  private kvStore: Map<string, string> = new Map()
-
+export class RaftService implements RaftInterface {
   /** Таймауты */
   private electionTimeout: NodeJS.Timeout | null = null
   private heartbeatInterval: NodeJS.Timeout | null = null
@@ -41,7 +18,10 @@ export class RaftService implements OnModuleInit {
   /** Конфиги */
   private config: ServerConfig
 
-  constructor(private configService: ConfigService) {
+  constructor(
+    private configService: ConfigService,
+    @Inject('RaftStorage') private readonly storage: StorageInterface
+  ) {
     this.config = {
       servers: this.configService.get<string>('PEERS', '').split(','),
       index: this.configService.get<number>('INDEX', 0),
@@ -61,8 +41,10 @@ export class RaftService implements OnModuleInit {
 
     const serverLength = this.config.servers.length
 
-    this.nextIndex = new Array(serverLength).fill(this.log.length) as number[]
-    this.matchIndex = new Array(serverLength).fill(0) as number[]
+    this.storage.setNextIndex(
+      new Array(serverLength).fill(this.storage.getLogs().length) as number[]
+    )
+    this.storage.setMatchIndex(new Array(serverLength).fill(0) as number[])
   }
 
   onModuleInit() {
@@ -73,7 +55,7 @@ export class RaftService implements OnModuleInit {
    * Останавливает все таймеры
    */
   public stop() {
-    this.state = State.Follower
+    this.storage.state = State.Follower
 
     if (this.electionTimeout) {
       clearTimeout(this.electionTimeout)
@@ -89,31 +71,34 @@ export class RaftService implements OnModuleInit {
    * @returns {type RequestVoteResult} Результат голосования
    */
   public RequestVote(params: RequestVoteDto): RequestVoteResult {
-    if (params.term < this.currentTerm) {
-      return { term: this.currentTerm, voteGranted: false }
+    if (params.term < this.storage.currentTerm) {
+      return { term: this.storage.currentTerm, voteGranted: false }
     }
 
-    if (params.term > this.currentTerm) {
-      this.currentTerm = params.term
-      this.state = State.Follower
-      this.votedFor = null
+    if (params.term > this.storage.currentTerm) {
+      this.storage.currentTerm = params.term
+      this.storage.state = State.Follower
+      this.storage.votedFor = null
     }
 
-    const lastLogIndex = this.log.length - 1
-    const lastLogTerm = this.log[lastLogIndex].term
+    const logs = this.storage.getLogs()
+
+    const lastLogIndex = logs.length - 1
+    const lastLogTerm = logs[lastLogIndex]?.term || -1
 
     if (
-      (this.votedFor === null || this.votedFor === params.candidateId) &&
+      (this.storage.votedFor === null ||
+        this.storage.votedFor === params.candidateId) &&
       (params.lastLogTerm > lastLogTerm ||
         (params.lastLogTerm === lastLogTerm &&
           params.lastLogIndex >= lastLogIndex))
     ) {
-      this.votedFor = params.candidateId
+      this.storage.votedFor = params.candidateId
       this.resetElectionTimeout()
-      return { term: this.currentTerm, voteGranted: true }
+      return { term: this.storage.currentTerm, voteGranted: true }
     }
 
-    return { term: this.currentTerm, voteGranted: false }
+    return { term: this.storage.currentTerm, voteGranted: false }
   }
 
   /**
@@ -122,54 +107,55 @@ export class RaftService implements OnModuleInit {
    * @returns {type AppendEntriesResult}
    * */
   public AppendEntries(params: AppendEntriesDto): AppendEntriesResult {
-    if (params.term < this.currentTerm) {
-      return { term: this.currentTerm, success: false }
-    }
+    if (params.term < this.storage.currentTerm)
+      return { term: this.storage.currentTerm, success: false }
 
     /* Если в кластере 2 лидера */
-    if (this.state === State.Leader) {
+    if (this.storage.state === State.Leader) {
       this.stop()
     }
 
-    if (params.term > this.currentTerm) {
-      this.currentTerm = params.term
-      this.state = State.Follower
-      this.votedFor = null
+    if (params.term > this.storage.currentTerm) {
+      this.storage.currentTerm = params.term
+      this.storage.state = State.Follower
+      this.storage.votedFor = null
     }
 
     /* Сбрасываем таймаут выборов */
     this.resetElectionTimeout()
 
+    const logs = this.storage.getLogs()
+
     /* Проверка актуальности */
     if (
-      params.prevLogIndex >= this.log.length ||
-      this.log[params.prevLogIndex]?.term !== params.prevLogTerm
+      params.prevLogIndex >= logs.length ||
+      logs[params.prevLogIndex]?.term !== params.prevLogTerm
     ) {
-      return { term: this.currentTerm, success: false }
+      return { term: this.storage.currentTerm, success: false }
     }
 
     /* Сохраняем новые данные */
     let index = params.prevLogIndex + 1
 
     for (const entry of params.entries) {
-      if (index < this.log.length && this.log[index].term !== entry.term) {
-        this.log.splice(index)
+      if (index < logs.length && logs[index].term !== entry.term) {
+        this.storage.removeLog(index)
       }
 
-      if (index >= this.log.length) {
-        this.log.push(entry)
+      if (index >= logs.length) {
+        logs.push(entry)
       }
 
       index++
     }
 
     // Обновляем KV
-    if (params.leaderCommit > this.commitIndex) {
-      this.commitIndex = Math.min(params.leaderCommit, this.log.length - 1)
+    if (params.leaderCommit > this.storage.commitIndex) {
+      this.storage.commitIndex = Math.min(params.leaderCommit, logs.length - 1)
       this.applyLogs()
     }
 
-    return { term: this.currentTerm, success: true }
+    return { term: this.storage.currentTerm, success: true }
   }
 
   /**
@@ -177,18 +163,18 @@ export class RaftService implements OnModuleInit {
    * @returns {Promise void}
    * */
   private async handleElectionTimeout(): Promise<void> {
-    if (this.state === State.Leader) return
+    if (this.storage.state === State.Leader) return
 
-    this.state = State.Candidate
-    this.currentTerm++
-    this.votedFor = this.config.index
+    this.storage.state = State.Candidate
+    this.storage.currentTerm++
+    this.storage.votedFor = this.config.index
 
     const voteGranted = await this.sendRequestVote()
 
     if (voteGranted) {
       this.becomeLeader()
     } else {
-      this.state = State.Follower
+      this.storage.state = State.Follower
       this.resetElectionTimeout()
     }
   }
@@ -198,14 +184,16 @@ export class RaftService implements OnModuleInit {
    * @returns {Promise boolean}
    * */
   private async sendRequestVote(): Promise<boolean> {
+    const logs = this.storage.getLogs()
+
     const promises = this.config.servers.map((addr, i) => {
       if (i === this.config.index) return { voteGranted: true } // Сам себе vote
 
       const params: RequestVoteDto = {
-        term: this.currentTerm,
+        term: this.storage.currentTerm,
         candidateId: this.config.index,
-        lastLogIndex: this.log.length - 1,
-        lastLogTerm: this.log[this.log.length - 1].term,
+        lastLogIndex: logs.length - 1,
+        lastLogTerm: logs[logs.length - 1].term,
       }
 
       return fetch(`${addr}/raft/request-vote`, {
@@ -229,12 +217,13 @@ export class RaftService implements OnModuleInit {
    * @returns {void}
    * */
   private becomeLeader(): void {
-    this.state = State.Leader
-    this.nextIndex.fill(this.log.length)
-    this.matchIndex.fill(0)
+    const nextIndex = this.storage.getNextIndex()
+    const matchIndex = this.storage.getMatchIndex()
+    const logs = this.storage.getLogs()
 
-    /* Отправляем heartbeat сразу при переизбрании */
-    // this.sendHeartbeat()
+    this.storage.state = State.Leader
+    this.storage.setNextIndex(nextIndex.map(() => logs.length))
+    this.storage.setMatchIndex(matchIndex.map(() => 0))
 
     this.heartbeatInterval = setInterval(
       () => this.sendHeartbeat(),
@@ -248,24 +237,25 @@ export class RaftService implements OnModuleInit {
    * @returns {Promise void}
    * */
   private async sendHeartbeat(): Promise<void> {
-    if (this.state !== State.Leader) return
+    if (this.storage.state !== State.Leader) return
+
+    const logs = this.storage.getLogs()
+    const nextIndex = this.storage.getNextIndex()
 
     const promises = this.config.servers.map((addr, i) => {
       if (i === this.config.index) return { success: true }
 
-      const prevLogIndex = this.nextIndex[i] - 1
-      const entries = this.log.slice(this.nextIndex[i])
+      const prevLogIndex = nextIndex[i] - 1
+      const entries = logs.slice(nextIndex[i])
 
       const params: AppendEntriesDto = {
-        term: this.currentTerm,
+        term: this.storage.currentTerm,
         leaderId: this.config.index,
         prevLogIndex,
         prevLogTerm:
-          prevLogIndex >= 0 && this.log[prevLogIndex]
-            ? this.log[prevLogIndex].term
-            : 0,
+          prevLogIndex >= 0 && logs[prevLogIndex] ? logs[prevLogIndex].term : 0,
         entries,
-        leaderCommit: this.commitIndex,
+        leaderCommit: this.storage.commitIndex,
       }
 
       return fetch(`${addr}/raft/append-entries`, {
@@ -293,17 +283,22 @@ export class RaftService implements OnModuleInit {
     result: AppendEntriesResult,
     index: number
   ): AppendEntriesResult {
+    const logs = this.storage.getLogs()
+    const nextIndex = this.storage.getNextIndex()
+    const matchIndex = this.storage.getMatchIndex()
+
     if (result.success) {
       /* Успешный запрос - обновляем индексы ноды */
-      this.nextIndex[index] = this.log.length
-      this.matchIndex[index] = this.log.length - 1
-    } else if (result.term > this.currentTerm) {
+      this.storage.updateNextIndex(index, logs.length)
+      this.storage.updateMatchIndex(index, logs.length - 1)
+    } else if (result.term > this.storage.currentTerm) {
       /* Данные лидера не актуальны - откатываем состояние до фоловера и ждем переизбрания */
-      this.state = State.Follower
-      this.currentTerm = result.term
+      this.storage.state = State.Follower
+      this.storage.currentTerm = result.term
     } else {
       /* Данные в nextIndex по текущей ноде не актуальны, откатываем и пробуем еще дальше */
-      if (this.nextIndex[index] > 0) this.nextIndex[index]--
+      if (nextIndex[index] > 0)
+        this.storage.updateNextIndex(index, nextIndex[index] - 1)
     }
     return result
   }
@@ -321,18 +316,21 @@ export class RaftService implements OnModuleInit {
    * @returns {void}
    * */
   private updateCommitIndex(): void {
+    const logs = this.storage.getLogs()
+    const matchIndex = this.storage.getMatchIndex()
+
     for (
-      let logIndex = this.log.length - 1;
-      logIndex > this.commitIndex;
+      let logIndex = logs.length - 1;
+      logIndex > this.storage.commitIndex;
       logIndex--
     ) {
-      const matches = this.matchIndex.filter((m) => m >= logIndex).length + 1 // +1 для себя
+      const matches = matchIndex.filter((m) => m >= logIndex).length + 1 // +1 для себя
 
       if (
         matches > this.config.servers.length / 2 &&
-        this.log[logIndex].term === this.currentTerm
+        logs[logIndex].term === this.storage.currentTerm
       ) {
-        this.commitIndex = logIndex
+        this.storage.commitIndex = logIndex
         this.applyLogs()
         break
       }
@@ -372,13 +370,13 @@ export class RaftService implements OnModuleInit {
    * @returns {void}
    * */
   private applyLogs(): void {
-    while (this.lastApplied < this.commitIndex) {
-      this.lastApplied++
+    while (this.storage.lastApplied < this.storage.commitIndex) {
+      this.storage.lastApplied++
 
-      const entry = this.log[this.lastApplied]
+      const entry = this.storage.getLogs()[this.storage.lastApplied]
 
       if (entry.command) {
-        this.kvStore.set(entry.command.key, entry.command.value)
+        this.storage.setValue(entry.command.key, entry.command.value)
       }
     }
   }
@@ -392,15 +390,15 @@ export class RaftService implements OnModuleInit {
   public setValue(key: string, value: string): boolean {
     // Только лидер может принимать изменения
     /* todo: Перенаправить на лидера */
-    if (this.state !== State.Leader) return false
+    if (this.storage.state !== State.Leader) return false
 
     const entry: LogEntryDto = {
-      index: this.log.length,
-      term: this.currentTerm,
+      index: this.storage.getLogs().length,
+      term: this.storage.currentTerm,
       command: { key, value },
     }
 
-    this.log.push(entry)
+    this.storage.addLog(entry)
 
     return true
   }
@@ -411,7 +409,7 @@ export class RaftService implements OnModuleInit {
    * @returns {string | undefined}
    * */
   public getValue(key: string): string | undefined {
-    return this.kvStore.get(key)
+    return this.storage.getValue(key)
   }
 
   /**
@@ -419,6 +417,6 @@ export class RaftService implements OnModuleInit {
    * @returns {enum State}
    * */
   public getState(): State {
-    return this.state
+    return this.storage.state
   }
 }

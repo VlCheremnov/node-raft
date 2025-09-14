@@ -1,7 +1,7 @@
 import { Body, Controller, HttpCode, HttpStatus, Post } from '@nestjs/common'
 import { RaftService } from './raft.service'
-import { GetKvDto } from './dto/get-kv.dto'
-import { SetKvDto } from './dto/set-kv.dto'
+import { GetKvDto } from './../dto/get-kv.dto'
+import { SetKvDto } from './../dto/set-kv.dto'
 
 @Controller('kv')
 export class KvController {

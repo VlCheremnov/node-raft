@@ -1,8 +1,8 @@
 import { Body, Controller, Post } from '@nestjs/common'
 import { RaftService } from './raft.service'
-import { AppendEntriesResult, RequestVoteResult } from './types'
-import { RequestVoteDto } from './dto/request-vote.dto'
-import { AppendEntriesDto } from './dto/append-entries.dto'
+import { AppendEntriesResult, RequestVoteResult } from './../types'
+import { RequestVoteDto } from './../dto/request-vote.dto'
+import { AppendEntriesDto } from './../dto/append-entries.dto'
 
 @Controller('raft')
 export class RaftController {

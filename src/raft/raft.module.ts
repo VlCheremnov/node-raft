@@ -1,11 +1,13 @@
 import { Module } from '@nestjs/common'
-import { RaftService } from './raft.service'
-import { RaftController } from './raft.controller'
-import { KvController } from './kv.controller'
 import { ConfigService } from '@nestjs/config'
+import { RaftService } from './core/raft.service'
+import { RaftController } from './core/raft.controller'
+import { KvController } from './core/kv.controller'
+import { StorageModule } from './storage/storage.module'
 
 @Module({
-  providers: [RaftService, ConfigService],
+  imports: [StorageModule],
+  providers: [ConfigService, RaftService],
   controllers: [RaftController, KvController],
   exports: [RaftService],
 })
