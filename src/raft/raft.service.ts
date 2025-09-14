@@ -73,6 +73,8 @@ export class RaftService implements OnModuleInit {
    * Останавливает все таймеры
    */
   public stop() {
+    this.state = State.Follower
+
     if (this.electionTimeout) {
       clearTimeout(this.electionTimeout)
     }
@@ -122,6 +124,11 @@ export class RaftService implements OnModuleInit {
   public AppendEntries(params: AppendEntriesDto): AppendEntriesResult {
     if (params.term < this.currentTerm) {
       return { term: this.currentTerm, success: false }
+    }
+
+    /* Если в кластере 2 лидера */
+    if (this.state === State.Leader) {
+      this.stop()
     }
 
     if (params.term > this.currentTerm) {
@@ -272,6 +279,8 @@ export class RaftService implements OnModuleInit {
     })
 
     await Promise.allSettled(promises)
+
+    this.updateCommitIndex()
   }
 
   /**
@@ -288,14 +297,13 @@ export class RaftService implements OnModuleInit {
       /* Успешный запрос - обновляем индексы ноды */
       this.nextIndex[index] = this.log.length
       this.matchIndex[index] = this.log.length - 1
-      this.updateCommitIndex()
     } else if (result.term > this.currentTerm) {
       /* Данные лидера не актуальны - откатываем состояние до фоловера и ждем переизбрания */
       this.state = State.Follower
       this.currentTerm = result.term
     } else {
       /* Данные в nextIndex по текущей ноде не актуальны, откатываем и пробуем еще дальше */
-      this.nextIndex[index]--
+      if (this.nextIndex[index] > 0) this.nextIndex[index]--
     }
     return result
   }
@@ -313,14 +321,18 @@ export class RaftService implements OnModuleInit {
    * @returns {void}
    * */
   private updateCommitIndex(): void {
-    for (let n = this.log.length - 1; n > this.commitIndex; n--) {
-      const matches = this.matchIndex.filter((m) => m >= n).length + 1 // +1 для себя
+    for (
+      let logIndex = this.log.length - 1;
+      logIndex > this.commitIndex;
+      logIndex--
+    ) {
+      const matches = this.matchIndex.filter((m) => m >= logIndex).length + 1 // +1 для себя
 
       if (
         matches > this.config.servers.length / 2 &&
-        this.log[n].term === this.currentTerm
+        this.log[logIndex].term === this.currentTerm
       ) {
-        this.commitIndex = n
+        this.commitIndex = logIndex
         this.applyLogs()
         break
       }

@@ -7,21 +7,29 @@ import { ConfigService } from '@nestjs/config'
 import { RaftService } from '../src/raft/raft.service'
 import { State } from '../src/raft/enum'
 
-const sleep = async (ms: number) => {
-  return new Promise((resolve) => setTimeout(resolve, ms))
-}
-
 enum KvDataKeys {
   Test1 = 'key-1',
   Test2 = 'key-2',
   Test3 = 'key-3',
+  Test4 = 'key-4',
+  Test5 = 'key-5',
 }
 
 const KvData = {
   [KvDataKeys.Test1]: 'value-1',
   [KvDataKeys.Test2]: 'value-2',
   [KvDataKeys.Test3]: 'value-3',
+  [KvDataKeys.Test4]: 'value-4',
+  [KvDataKeys.Test5]: 'value-5',
 }
+
+/*  */
+const sleep = async (ms: number) =>
+  new Promise((resolve) => setTimeout(resolve, ms))
+
+// Проверяем, существует ли сервер
+const isAppRunning = (app: INestApplication<App>): boolean =>
+  !!(app.getHttpServer() as any)?.address()
 
 const waitForCondition: (
   conditionFunc: () => boolean,
@@ -46,12 +54,33 @@ const waitForCondition: (
   throw new Error(errorMessage)
 }
 
+const waitCommitLogs = (apps: INestApplication<App>[], index: number) =>
+  waitForCondition(() => {
+    const services: unknown[] = apps.map((app) => app.get(RaftService))
+
+    const okCommitIndex = services.every(
+      (service: { commitIndex: number }) => service.commitIndex === index
+    )
+    const okLastApplied = services.every(
+      (service: { lastApplied: number }) => service.lastApplied === index
+    )
+
+    return okCommitIndex && okLastApplied
+  })
+
+const waitBecomeLeader = (apps: INestApplication<App>[]) =>
+  waitForCondition(() => {
+    const states = apps.map((app) => app.get(RaftService).getState())
+    const leaders = states.filter((state) => state === State.Leader).length
+
+    return leaders === 1
+  })
+
 describe('AppController (e2e)', () => {
   let apps: INestApplication<App>[] = []
   const ports: number[] = [3001, 3002, 3003, 3004, 3005]
 
   beforeAll(async () => {
-    console.log('beforeAll')
     for (let i = 0; i < ports.length; i++) {
       const port = ports[i]
 
@@ -81,12 +110,7 @@ describe('AppController (e2e)', () => {
       apps.push(app)
     }
 
-    await waitForCondition(() => {
-      const states = apps.map((app) => app.get(RaftService).getState())
-      const leaders = states.filter((s) => s === State.Leader).length
-
-      return leaders === 1
-    })
+    await waitBecomeLeader(apps)
   })
 
   afterAll(async () => {
@@ -119,17 +143,7 @@ describe('AppController (e2e)', () => {
       }
 
       /* Ждем пока рафт примет изменения */
-      await waitForCondition(() => {
-        const services: unknown[] = apps.map((app) => app.get(RaftService))
-        const okCommitIndex = services.every(
-          (service: { commitIndex: number }) => service.commitIndex === 1
-        )
-        const okLastApplied = services.every(
-          (service: { lastApplied: number }) => service.lastApplied === 1
-        )
-
-        return okCommitIndex && okLastApplied
-      })
+      await waitCommitLogs(apps, 1)
     })
     it('Get key на любой ноде', async () => {
       for (const app of apps) {
@@ -142,7 +156,56 @@ describe('AppController (e2e)', () => {
           })
       }
     })
-    it('Несколько set, репликация и get key на всех нодах', async () => {})
+    it('Несколько set, репликация и get key на всех нодах', async () => {
+      for (const app of apps) {
+        const raftService = app.get(RaftService)
+
+        const state = raftService.getState()
+
+        if (state !== State.Leader) {
+          continue
+        }
+
+        await Promise.all([
+          request(app.getHttpServer())
+            .post(`/kv/set`)
+            .send({ key: KvDataKeys.Test2, value: KvData[KvDataKeys.Test2] })
+            .expect(200)
+            .then(({ body }) => {
+              expect(body.success).toBe(true)
+            }),
+          request(app.getHttpServer())
+            .post(`/kv/set`)
+            .send({ key: KvDataKeys.Test3, value: KvData[KvDataKeys.Test3] })
+            .expect(200)
+            .then(({ body }) => {
+              expect(body.success).toBe(true)
+            }),
+        ])
+      }
+
+      /* Ждем пока рафт примет изменения */
+      await waitCommitLogs(apps, 3)
+
+      for (const app of apps) {
+        await Promise.all([
+          request(app.getHttpServer())
+            .post(`/kv/get`)
+            .send({ key: KvDataKeys.Test2 })
+            .expect(200)
+            .then(({ body }) => {
+              expect(body.value).toBe(KvData[KvDataKeys.Test2])
+            }),
+          request(app.getHttpServer())
+            .post(`/kv/get`)
+            .send({ key: KvDataKeys.Test3 })
+            .expect(200)
+            .then(({ body }) => {
+              expect(body.value).toBe(KvData[KvDataKeys.Test3])
+            }),
+        ])
+      }
+    })
   })
 
   describe('Базовый консенсус и выборы лидера:', () => {
@@ -164,19 +227,113 @@ describe('AppController (e2e)', () => {
         }
       }
 
-      await waitForCondition(() => {
-        const states = apps.map((app) => app.get(RaftService).getState())
-        const leaders = states.filter((s) => s === State.Leader).length
-
-        return leaders === 1
-      })
+      await waitBecomeLeader(apps)
     })
-    it('Восстановление консенсуса при двух лидерах', async () => {})
+    it('Восстановление консенсуса при двух лидерах', async () => {
+      const follower = apps.find(
+        (app) => app.get(RaftService).getState() === State.Follower
+      )!
+
+      const raftService = follower.get(RaftService)
+
+      ;(raftService as any).becomeLeader()
+
+      await waitBecomeLeader(apps)
+    })
   })
 
   describe('Отказоустойчивость:', () => {
-    it('5 нод, 1-2 down — кластер работает, set/get ok', async () => {})
-    it('5 нод, 3 down — set/get failure, но восстановление после перезапуска', async () => {})
-    it('High load: много set, проверка на backlog in log.', async () => {})
+    it('5 нод, 1-2 down — кластер работает, set/get ok', async () => {
+      for (let i = 0; i < 2; i++) {
+        const app = apps[i]
+        const raftService = app.get(RaftService)
+
+        raftService.stop()
+        await app.close()
+      }
+
+      await waitBecomeLeader(apps)
+
+      const leader = apps.find(
+        (app) =>
+          isAppRunning(app) && app.get(RaftService).getState() === State.Leader
+      )!
+
+      await request(leader.getHttpServer())
+        .post(`/kv/set`)
+        .send({ key: KvDataKeys.Test4, value: KvData[KvDataKeys.Test4] })
+        .expect(200)
+        .then(({ body }) => {
+          expect(body.success).toBe(true)
+        })
+
+      /* Ждем пока рафт примет изменения */
+      await waitCommitLogs([leader], 4)
+
+      await request(leader.getHttpServer())
+        .post(`/kv/get`)
+        .send({ key: KvDataKeys.Test4 })
+        .expect(200)
+        .then(({ body }) => {
+          expect(body.value).toBe(KvData[KvDataKeys.Test4])
+        })
+    })
+    it('5 нод, 3 down — set/get failure', async () => {
+      for (let i = 0; i < apps.length; i++) {
+        const app = apps[i]
+        const raftService = app.get(RaftService)
+
+        if (isAppRunning(app) && raftService.getState() !== State.Leader) {
+          raftService.stop()
+          await app.close()
+          break
+        }
+      }
+
+      const leader = apps.find(
+        (app) =>
+          isAppRunning(app) && app.get(RaftService).getState() === State.Leader
+      )!
+
+      await request(leader.getHttpServer())
+        .post(`/kv/set`)
+        .send({ key: KvDataKeys.Test5, value: KvData[KvDataKeys.Test5] })
+        .expect(200)
+        .then(({ body }) => {
+          expect(body.success).toBe(true)
+        })
+
+      await expect(waitCommitLogs([leader], 5)).rejects.toThrow()
+    })
+    it('Восстановление после перезапуска', async () => {
+      for (let i = 0; i < apps.length; i++) {
+        const app = apps[i]
+
+        if (!isAppRunning(app)) {
+          const configService = app.get(ConfigService)
+          const port = configService.get<number>('PORT', 3000)
+
+          const raftService = app.get(RaftService)
+          await app.listen(port)
+          raftService.onModuleInit()
+        }
+      }
+
+      await waitCommitLogs(apps, 5)
+
+      for (const app of apps) {
+        await Promise.all([
+          request(app.getHttpServer())
+            .post(`/kv/get`)
+            .send({ key: KvDataKeys.Test5 })
+            .expect(200)
+            .then(({ body }) => {
+              expect(body.value).toBe(KvData[KvDataKeys.Test5])
+            }),
+        ])
+      }
+    })
   })
+
+  describe('Выборы:', () => {})
 })

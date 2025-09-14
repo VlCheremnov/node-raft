@@ -279,6 +279,7 @@ describe('RaftService', () => {
       expect(secondSuccess).toBe(false)
     })
     it('Append новых entries, удаление конфликтующих (truncate log).', () => {
+      ;(service as any).state = State.Leader
       const logs = (service as any).log as LogEntryDto[]
 
       service.setValue(command.key, command.value)
