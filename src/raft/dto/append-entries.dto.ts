@@ -2,7 +2,8 @@ import { IsInt, ValidateNested, IsOptional, IsString } from 'class-validator'
 import { Type } from 'class-transformer'
 
 /**
- * @typedef {Object} AppendEntriesDto - Параметры запроса к фоловеру от лидера на стадии heartbeat
+ * @class AppendEntriesDto
+ * @description Параметры запроса к фоловеру от лидера на стадии heartbeat
  * @property {number} term - Срок (term) голосования
  * @property {number} leaderId - Id лидера
  * @property {number} prevLogIndex - Последний индекс лога для текущего фоловера у лидера
@@ -28,10 +29,11 @@ export class AppendEntriesDto {
 }
 
 /**
- * @typedef {Object} LogEntryDto - Запись консенсуса
+ * @class LogEntryDto
+ * @description Запись консенсуса
  * @property {number} index - Index лога
  * @property {number} term - Срок (term) голосования
- * @property {Object|null} command - Команда записи
+ * @property {CommandDto|null} command - Команда записи
  */
 export class LogEntryDto {
   @IsInt()
@@ -46,7 +48,8 @@ export class LogEntryDto {
 }
 
 /**
- * @typedef {Object} CommandDto - Команда лога
+ * @class CommandDto
+ * @description Команда лога
  * @property {string} key - Ключ
  * @property {string} value - Значение
  */

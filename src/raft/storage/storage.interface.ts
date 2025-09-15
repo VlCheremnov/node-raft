@@ -10,11 +10,14 @@ import { LogEntryDto } from '../dto/append-entries.dto'
  * @property {number} lastApplied - Индекс последней записи в логе.
  * @property {number|null} votedFor - За кого голосует текущий узел.
  * @property {() => LogEntryDto[]} getLogs - Получает список записей.
- * @property {(log: LogEntryDto) => boolean} addLog - Получает значение по ключу из kvStore.
+ * @property {(log: LogEntryDto) => boolean} addLog - Записывает значение в конец логов.
+ * @property {(index: number) => boolean} removeLog - Удаляет значение по индексу из логов.
  * @property {() => number[]} getNextIndex - Получает индексы следующей записи лога каждого фоловера.
- * @property {(i: number, serviceIndex: number) => boolean} setNextIndex - Устанавливает индекс следующей записи лога фоловера.
+ * @property {(index: number[]) => boolean} setNextIndex - Обновляет все nextIndex.
+ * @property {(serviceIndex: number, logIndex: number) => boolean} updateNextIndex - Устанавливает индекс следующей записи лога фоловера.
  * @property {() => number[]} getMatchIndex - Получает индексы последней записи лога каждого фоловера.
- * @property {(i: number, serviceIndex: number) => boolean} setMatchIndex - Устанавливает индекс последней записи лога фоловера.
+ * @property {(index: number[]) => boolean} setMatchIndex - Обновляет все matchIndex.
+ * @property {(serviceIndex: number, logIndex: number) => boolean} updateMatchIndex - Устанавливает индекс последней записи лога фоловера.
  * @property {(key: string) => string} getValue - Получает значение по ключу из kvStore.
  * @property {(key: string, value: string) => boolean} setValue - Устанавливает значение по ключу в kvStore.
  */

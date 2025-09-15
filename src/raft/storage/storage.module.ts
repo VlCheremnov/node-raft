@@ -1,11 +1,11 @@
-import { ImMemoryService } from './im-memory.service'
 import { Module } from '@nestjs/common'
+import { InMemoryService } from './in-memory.service'
 
 @Module({
   providers: [
     {
       provide: 'RaftStorage',
-      useClass: ImMemoryService, // Можно заменить на RedisStorage
+      useClass: InMemoryService, // Можно заменить на RedisStorage
     },
   ],
   exports: ['RaftStorage'],

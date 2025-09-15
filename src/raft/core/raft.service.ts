@@ -1,7 +1,11 @@
-import { Inject, Injectable, OnModuleInit } from '@nestjs/common'
+import { Inject, Injectable } from '@nestjs/common'
 
-import { AppendEntriesResult, RequestVoteResult } from './../types'
-import { RaftInterface, ServerConfig } from './raft.interface'
+import {
+  AppendEntriesResult,
+  RequestVoteResult,
+  ServerConfig,
+} from './../types'
+import { RaftInterface } from './raft.interface'
 
 import { State } from './../enum'
 import { ConfigService } from '@nestjs/config'
@@ -9,17 +13,45 @@ import { RequestVoteDto } from './../dto/request-vote.dto'
 import { AppendEntriesDto, LogEntryDto } from './../dto/append-entries.dto'
 import { StorageInterface } from '../storage/storage.interface'
 
+/**
+ * @class
+ * @implements {@link RaftInterface}
+ * @description Реализация консенсуса RAFT.
+ */
 @Injectable()
 export class RaftService implements RaftInterface {
-  /** Таймауты */
+  /**
+   * @private
+   * @type {NodeJS.Timeout|null}
+   * @description Таймаут выборов
+   */
   private electionTimeout: NodeJS.Timeout | null = null
+  /**
+   * @private
+   * @type {NodeJS.Timeout|null}
+   * @description Интервал лидера
+   */
   private heartbeatInterval: NodeJS.Timeout | null = null
 
-  /** Конфиги */
+  /**
+   * @private
+   * @type {@link ServerConfig}
+   * @description Конфиги RAFT консенсуса
+   */
   private config: ServerConfig
 
   constructor(
+    /**
+     * @private
+     * @type {@link ConfigService}
+     * @description Сервис конфигураций
+     */
     private configService: ConfigService,
+    /**
+     * @private
+     * @type {@link StorageInterface}
+     * @description Сервис хранилище данных
+     */
     @Inject('RaftStorage') private readonly storage: StorageInterface
   ) {
     this.config = {
@@ -47,14 +79,21 @@ export class RaftService implements RaftInterface {
     this.storage.setMatchIndex(new Array(serverLength).fill(0) as number[])
   }
 
-  onModuleInit() {
+  /**
+   * @public
+   * @returns {void}
+   * @description Хук инициализации сервиса
+   */
+  public onModuleInit(): void {
     this.resetElectionTimeout()
   }
 
   /**
-   * Останавливает все таймеры
+   * @public
+   * @returns {void}
+   * @description Останавливает сервис
    */
-  public stop() {
+  public stop(): void {
     this.storage.state = State.Follower
 
     if (this.electionTimeout) {
@@ -66,9 +105,10 @@ export class RaftService implements RaftInterface {
   }
 
   /**
-   * Запрашивает голос для выборов лидера
-   * @param {RequestVoteDto} params - Параметры запроса голосования
-   * @returns {type RequestVoteResult} Результат голосования
+   * @public
+   * @description Запрашивает голос для выборов лидера
+   * @param {RequestVoteDto} params - Параметры запроса голосования См. {@link RequestVoteDto}
+   * @returns {@link RequestVoteResult} Результат голосования
    */
   public RequestVote(params: RequestVoteDto): RequestVoteResult {
     if (params.term < this.storage.currentTerm) {
@@ -102,9 +142,10 @@ export class RaftService implements RaftInterface {
   }
 
   /**
-   * Обработка запроса от лидера
-   * @param {AppendEntriesDto} params - Параметры запроса
-   * @returns {type AppendEntriesResult}
+   * @public
+   * @param {AppendEntriesDto} params - Параметры запроса См. {@link AppendEntriesDto}
+   * @returns {@link AppendEntriesResult}
+   * @description Обработка запроса от лидера
    * */
   public AppendEntries(params: AppendEntriesDto): AppendEntriesResult {
     if (params.term < this.storage.currentTerm)
@@ -159,8 +200,51 @@ export class RaftService implements RaftInterface {
   }
 
   /**
-   * После истечения таймаута запускаем голосование на переизбрания лидера
+   * @public
+   * @description Создаем записи в KV хранилище
+   * @property {string} key - Ключ
+   * @property {string} value - Значение
+   * @returns {boolean}
+   * */
+  public setValue(key: string, value: string): boolean {
+    // Только лидер может принимать изменения
+    /* todo: Перенаправить на лидера */
+    if (this.storage.state !== State.Leader) return false
+
+    const entry: LogEntryDto = {
+      index: this.storage.getLogs().length,
+      term: this.storage.currentTerm,
+      command: { key, value },
+    }
+
+    this.storage.addLog(entry)
+
+    return true
+  }
+
+  /**
+   * @public
+   * @description Получить значение из KV хранилища
+   * @property {string} key - Ключ
+   * @returns {string|undefined}
+   * */
+  public getValue(key: string): string | undefined {
+    return this.storage.getValue(key)
+  }
+
+  /**
+   * @public
+   * @description Получить текущее состояние ноды
+   * @returns {enum State}
+   * */
+  public getState(): State {
+    return this.storage.state
+  }
+
+  /**
+   * @private
    * @returns {Promise void}
+   * @description После истечения таймаута запускаем голосование на переизбрания лидера
    * */
   private async handleElectionTimeout(): Promise<void> {
     if (this.storage.state === State.Leader) return
@@ -180,7 +264,8 @@ export class RaftService implements RaftInterface {
   }
 
   /**
-   * Запрос для RequestVote и подсчет голосов (HTTP POST к другим нодам)
+   * @private
+   * @description Запрос для RequestVote и подсчет голосов (HTTP POST к другим нодам)
    * @returns {Promise boolean}
    * */
   private async sendRequestVote(): Promise<boolean> {
@@ -213,7 +298,8 @@ export class RaftService implements RaftInterface {
   }
 
   /**
-   * Избирает текущую ноду лидером и запускает heartbeat
+   * @private
+   * @description Избирает текущую ноду лидером и запускает heartbeat
    * @returns {void}
    * */
   private becomeLeader(): void {
@@ -233,7 +319,8 @@ export class RaftService implements RaftInterface {
   }
 
   /**
-   * Отправляем heartbeat на другие ноды
+   * @private
+   * @description Отправляем heartbeat на другие ноды
    * @returns {Promise void}
    * */
   private async sendHeartbeat(): Promise<void> {
@@ -274,10 +361,11 @@ export class RaftService implements RaftInterface {
   }
 
   /**
-   * Обрабатываем ответ heartbeat от другой ноды
-   * @param {AppendEntriesResult} result - Ответ ноды
+   * @private
+   * @description Обрабатываем ответ heartbeat от другой ноды
+   * @param {AppendEntriesResult} result - Ответ ноды См. {@link AppendEntriesResult}
    * @param {number} index - Индекс ноды, от которой поступил ответ
-   * @returns {type AppendEntriesResult}
+   * @returns {@link AppendEntriesResult}
    * */
   private handleHeartbeatResponse(
     result: AppendEntriesResult,
@@ -285,7 +373,6 @@ export class RaftService implements RaftInterface {
   ): AppendEntriesResult {
     const logs = this.storage.getLogs()
     const nextIndex = this.storage.getNextIndex()
-    const matchIndex = this.storage.getMatchIndex()
 
     if (result.success) {
       /* Успешный запрос - обновляем индексы ноды */
@@ -304,15 +391,17 @@ export class RaftService implements RaftInterface {
   }
 
   /**
-   * Обрабатываем ошибку heartbeat от другой ноды
-   * @returns {Object}
+   * @private
+   * @description Обрабатываем ошибку heartbeat от другой ноды
+   * @returns {{ success: boolean }} Результат обработки запроса, где success указывает, успешно ли выполнено сохранение
    * */
   private handleHeartbeatError(): { success: boolean } {
     return { success: false }
   }
 
   /**
-   * Обновить commitIndex
+   * @private
+   * @description Обновить commitIndex
    * @returns {void}
    * */
   private updateCommitIndex(): void {
@@ -338,17 +427,19 @@ export class RaftService implements RaftInterface {
   }
 
   /**
-   * Рандомное число от и до
+   * @private
+   * @description Рандомное число от и до
    * @param {number} min - Минимальное число
    * @param {number} max - Максимальное число
    * @returns {number} Рандомное число
    * */
-  getRandomNumber(min: number, max: number): number {
+  private getRandomNumber(min: number, max: number): number {
     return Math.floor(Math.random() * (max - min + 1)) + min
   }
 
   /**
-   * Сброс таймаута выборов
+   * @private
+   * @description Сброс таймаута выборов
    * @returns {void}
    * */
   private resetElectionTimeout(): void {
@@ -366,7 +457,8 @@ export class RaftService implements RaftInterface {
   }
 
   /**
-   * Применить логи к KV хранилище
+   * @private
+   * @description Применить логи к KV хранилище
    * @returns {void}
    * */
   private applyLogs(): void {
@@ -379,44 +471,5 @@ export class RaftService implements RaftInterface {
         this.storage.setValue(entry.command.key, entry.command.value)
       }
     }
-  }
-
-  /**
-   * Создаем записи в KV хранилище
-   * @property {string} key - Ключ
-   * @property {string} value - Значение
-   * @returns {boolean}
-   * */
-  public setValue(key: string, value: string): boolean {
-    // Только лидер может принимать изменения
-    /* todo: Перенаправить на лидера */
-    if (this.storage.state !== State.Leader) return false
-
-    const entry: LogEntryDto = {
-      index: this.storage.getLogs().length,
-      term: this.storage.currentTerm,
-      command: { key, value },
-    }
-
-    this.storage.addLog(entry)
-
-    return true
-  }
-
-  /**
-   * Получить значение из KV хранилища
-   * @property {string} key - Ключ
-   * @returns {string | undefined}
-   * */
-  public getValue(key: string): string | undefined {
-    return this.storage.getValue(key)
-  }
-
-  /**
-   * Получить текущее состояние ноды
-   * @returns {enum State}
-   * */
-  public getState(): State {
-    return this.storage.state
   }
 }
