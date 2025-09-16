@@ -1,15 +1,23 @@
 import { Test, TestingModule } from '@nestjs/testing'
-import { RaftService } from '../raft/core/raft.service'
+import { RaftService } from './raft.service'
 import { ConfigService } from '@nestjs/config'
-import { State } from '../raft/enum'
-import { CommandDto, LogEntryDto } from '../raft/dto/append-entries.dto'
+import { State } from '../enum'
+import { CommandDto, LogEntryDto } from '../dto/append-entries.dto'
 import fetchMock from 'jest-fetch-mock'
-import { RequestVoteResult, AppendEntriesResult } from '../raft/types'
+import { RequestVoteResult, AppendEntriesResult } from '../types'
+import { InMemoryService } from '../storage/in-memory.service'
+import { StorageInterface } from '../storage/storage.interface'
+import { HttpTransportService } from '../transport/http-transport.service'
+import { TransportInterface } from '../transport/transport.interface'
+import { RaftInterface } from './raft.interface'
 
 describe('RaftService', () => {
-  let service: RaftService
+  let service: RaftInterface
+  let storage: StorageInterface
+  let transport: TransportInterface
 
   beforeEach(async () => {
+    /* todo: Больше не нужен, можно мокать transport module */
     fetchMock.resetMocks()
     jest.useFakeTimers()
 
@@ -28,10 +36,20 @@ describe('RaftService', () => {
           provide: ConfigService,
           useValue: mockConfigService,
         },
+        {
+          provide: 'RaftTransport',
+          useClass: HttpTransportService,
+        },
+        {
+          provide: 'RaftStorage',
+          useClass: InMemoryService,
+        },
       ],
     }).compile()
 
-    service = module.get<RaftService>(RaftService)
+    service = module.get(RaftService)
+    storage = module.get('RaftStorage')
+    transport = module.get('RaftTransport')
   })
 
   afterEach(() => {
@@ -40,7 +58,7 @@ describe('RaftService', () => {
 
   describe('RequestVote RPC', () => {
     it('Отказ, если уже проголосовали за другого в этом term', () => {
-      ;(service as any).votedFor = 1
+      storage.votedFor = 1
 
       const { voteGranted } = service.RequestVote({
         term: 0,
@@ -50,7 +68,7 @@ describe('RaftService', () => {
       })
 
       expect(voteGranted).toBe(false)
-      expect((service as any).votedFor).toBe(1)
+      expect(storage.votedFor).toBe(1)
     })
 
     it('Отказ, если лог кандидата не up-to-date (меньший lastLogTerm или короче при равном term)', () => {
@@ -62,7 +80,7 @@ describe('RaftService', () => {
       })
 
       expect(voteGranted).toBe(false)
-      expect((service as any).votedFor).toBe(null)
+      expect(storage.votedFor).toBe(null)
     })
 
     it('Грант, если лог кандидата лучше (более высокий term в последней записи)', () => {
@@ -74,11 +92,11 @@ describe('RaftService', () => {
       })
 
       expect(voteGranted).toBe(true)
-      expect((service as any).votedFor).toBe(1)
+      expect(storage.votedFor).toBe(1)
     })
 
     it('Step down, если term кандидата выше, даже если vote не granted', () => {
-      ;(service as any).currentTerm = 2
+      storage.currentTerm = 2
 
       const { voteGranted } = service.RequestVote({
         term: 1,
@@ -88,7 +106,7 @@ describe('RaftService', () => {
       })
 
       expect(voteGranted).toBe(false)
-      expect((service as any).votedFor).toBe(null)
+      expect(storage.votedFor).toBe(null)
     })
 
     it('Голосование за кандидата с более высоким term', () => {
@@ -100,13 +118,13 @@ describe('RaftService', () => {
       })
 
       expect(voteGranted).toBe(true)
-      expect((service as any).votedFor).toBe(1)
+      expect(storage.votedFor).toBe(1)
     })
 
     it('Отказывает в голосе, если term кандидата меньше currentTerm', () => {
-      ;(service as any).currentTerm = 2
+      storage.currentTerm = 2
 
-      const serviceCurrentTerm = (service as any).currentTerm as number
+      const serviceCurrentTerm = storage.currentTerm
 
       const params = {
         term: 1,
@@ -122,9 +140,9 @@ describe('RaftService', () => {
         voteGranted: false,
       })
 
-      expect((service as any).currentTerm as number).toBe(serviceCurrentTerm)
-      expect((service as any).state).toBe(State.Follower)
-      expect((service as any).votedFor).toBeNull()
+      expect(storage.currentTerm).toBe(serviceCurrentTerm)
+      expect(storage.state).toBe(State.Follower)
+      expect(storage.votedFor).toBeNull()
     })
   })
 
@@ -133,20 +151,20 @@ describe('RaftService', () => {
     const value = 'value'
 
     it('Получить текущее состояние ноды', () => {
-      expect(service.getState()).toBe((service as any).state)
+      expect(service.getState()).toBe(storage.state)
     })
 
     it('Успешный set как лидер: добавление в log и kv', () => {
-      ;(service as any).state = State.Leader
-      ;(service as any).commitIndex = 1
+      storage.state = State.Leader
+      storage.commitIndex = 1
 
       const result = service.setValue(key, value)
-      const logs = (service as any).log as LogEntryDto[]
+      const logs = storage.getLogs()
 
       expect(result).toBe(true)
       expect(logs[logs.length - 1]).toEqual({
         index: logs.length - 1,
-        term: (service as any).currentTerm as number,
+        term: storage.currentTerm,
         command: { key, value },
       })
       ;(service as any).applyLogs()
@@ -154,11 +172,11 @@ describe('RaftService', () => {
     })
 
     it('Отказ в set, если не лидер', () => {
-      ;(service as any).state = State.Follower
+      storage.state = State.Follower
 
       const resultFolower = service.setValue(key, value)
 
-      ;(service as any).state = State.Candidate
+      storage.state = State.Candidate
 
       const resultCandidate = service.setValue(key, value)
 
@@ -171,12 +189,12 @@ describe('RaftService', () => {
     })
     it('Конфликт: set одного ключа несколько раз, проверка финального значения', () => {
       const secondValue = value + '-1'
-      ;(service as any).state = State.Leader
-      const logs = (service as any).log as LogEntryDto[]
+      storage.state = State.Leader
+      const logs = storage.getLogs()
 
       /* Добавляем первую запись лог */
       const firstResult = service.setValue(key, value)
-      ;(service as any).commitIndex = 1
+      storage.commitIndex = 1
 
       /* Проверяем логи */
       expect(firstResult).toBe(true)
@@ -192,7 +210,7 @@ describe('RaftService', () => {
 
       /* Добавляем вторую запись лог */
       const secondResult = service.setValue(key, secondValue)
-      ;(service as any).commitIndex = 2
+      storage.commitIndex = 2
 
       /* Проверяем логи */
       expect(secondResult).toBe(true)
@@ -228,7 +246,7 @@ describe('RaftService', () => {
 
       const { term: currentTerm, success } = service.AppendEntries(log)
 
-      const logs = (service as any).log as LogEntryDto[]
+      const logs = storage.getLogs()
 
       expect(success).toBe(true)
       expect(currentTerm).toBe(log.term)
@@ -237,10 +255,10 @@ describe('RaftService', () => {
       expect(service.getValue(key)).toBe(value)
       expect(jest.getTimerCount()).toBe(1)
       expect(service.getState()).toBe(State.Follower)
-      expect((service as any).votedFor).toBe(null)
+      expect(storage.votedFor).toBe(null)
     })
     it('Отказ, если term лидера ниже.', () => {
-      ;(service as any).currentTerm = 2
+      storage.currentTerm = 2
 
       const log = {
         term: 1,
@@ -279,8 +297,8 @@ describe('RaftService', () => {
       expect(secondSuccess).toBe(false)
     })
     it('Append новых entries, удаление конфликтующих (truncate log).', () => {
-      ;(service as any).state = State.Leader
-      const logs = (service as any).log as LogEntryDto[]
+      storage.state = State.Leader
+      const logs = storage.getLogs()
 
       service.setValue(command.key, command.value)
       service.setValue(command.key, command.value)
@@ -305,7 +323,7 @@ describe('RaftService', () => {
 
   describe('Election timeout и become candidate/leader', () => {
     it('Таймаут: не переизбераем лидера', async () => {
-      ;(service as any).state = State.Leader
+      storage.state = State.Leader
       await (service as any).handleElectionTimeout()
 
       expect(jest.getTimerCount()).toBe(0)
@@ -313,15 +331,15 @@ describe('RaftService', () => {
     it('Таймаут: стать кандидатом, инкремент term, vote for self.', async () => {
       const promise = (service as any).handleElectionTimeout() as Promise<void>
 
-      let state = (service as any).state as State
+      let state = storage.state
 
       expect(state).toBe(State.Candidate)
 
       await promise
 
-      state = (service as any).state as State
-      const currentTerm = (service as any).currentTerm as number
-      const votedFor = (service as any).votedFor as number | null
+      state = storage.state
+      const currentTerm = storage.currentTerm
+      const votedFor = storage.votedFor
       const index = (service as any).config?.index as number
 
       expect(state).toBe(State.Leader)
@@ -337,7 +355,7 @@ describe('RaftService', () => {
       await (service as any).handleElectionTimeout()
 
       expect(service.getState()).toBe(State.Leader)
-      expect((service as any).currentTerm).toBe(1)
+      expect(storage.currentTerm).toBe(1)
     })
     it('Выборы с фейковыми ответами (false).', async () => {
       fetchMock.mockResponse(
@@ -347,7 +365,7 @@ describe('RaftService', () => {
       await (service as any).handleElectionTimeout()
 
       expect(service.getState()).toBe(State.Follower)
-      expect((service as any).currentTerm).toBe(1)
+      expect(storage.currentTerm).toBe(1)
     })
   })
 
@@ -356,13 +374,13 @@ describe('RaftService', () => {
     const value = 'value'
 
     it('Send heartbeat (ответ success с текущим term)', async () => {
-      ;(service as any).state = State.Leader
-      ;(service as any).currentTerm = 1
+      storage.state = State.Leader
+      storage.currentTerm = 1
       ;(service as any).config.servers = ['1', '2', '3']
 
       service.setValue(key, value)
 
-      const logs = (service as any).log as LogEntryDto[]
+      const logs = storage.getLogs()
 
       expect(logs[1]).toEqual({
         index: 1,
@@ -377,7 +395,7 @@ describe('RaftService', () => {
       await (service as any).sendHeartbeat()
 
       expect(service.getState()).toBe(State.Leader)
-      expect((service as any).currentTerm).toBe(1)
+      expect(storage.currentTerm).toBe(1)
       expect(service.getValue(key)).toBe(value)
 
       expect(logs[1]).toEqual({
@@ -388,13 +406,13 @@ describe('RaftService', () => {
     })
 
     it('Send heartbeat (ответ success с term выше)', async () => {
-      ;(service as any).state = State.Leader
-      ;(service as any).currentTerm = 1
+      storage.state = State.Leader
+      storage.currentTerm = 1
       ;(service as any).config.servers = ['1', '2', '3']
 
       service.setValue(key, value)
 
-      const logs = (service as any).log as LogEntryDto[]
+      const logs = storage.getLogs()
 
       expect(logs[1]).toEqual({
         index: 1,
@@ -409,7 +427,7 @@ describe('RaftService', () => {
       await (service as any).sendHeartbeat()
 
       expect(service.getState()).toBe(State.Follower)
-      expect((service as any).currentTerm).toBe(2)
+      expect(storage.currentTerm).toBe(2)
       expect(service.getValue(key)).toBe(undefined)
 
       expect(logs[1]).toEqual({
@@ -420,16 +438,16 @@ describe('RaftService', () => {
     })
 
     it('Send heartbeat (ответ failure с текущим term)', async () => {
-      ;(service as any).state = State.Leader
-      ;(service as any).currentTerm = 1
+      storage.state = State.Leader
+      storage.currentTerm = 1
       ;(service as any).config.servers = ['1', '2', '3']
-      ;(service as any).nextIndex = [0, 3, 3]
+      storage.setNextIndex([0, 3, 3])
 
       service.setValue(key, value)
       service.setValue(key, value)
       service.setValue(key, value)
 
-      const logs = (service as any).log as LogEntryDto[]
+      const logs = storage.getLogs()
 
       expect(logs[1]).toEqual({
         index: 1,
@@ -446,9 +464,9 @@ describe('RaftService', () => {
       // toStrictEqual
 
       expect(service.getState()).toBe(State.Leader)
-      expect((service as any).currentTerm).toBe(1)
+      expect(storage.currentTerm).toBe(1)
       expect(service.getValue(key)).toBe(undefined)
-      expect((service as any).nextIndex).toStrictEqual([0, 2, 2])
+      expect(storage.getNextIndex()).toStrictEqual([0, 2, 2])
 
       expect(logs[1]).toEqual({
         index: 1,

@@ -11,50 +11,50 @@ export class InMemoryService implements StorageInterface {
    * @public
    * @type {@link State}
    */
-  public state: State
+  public state: State = State.Follower
   /**
    * Текущий срок.
    * @public
    * @type {number}
    */
-  public currentTerm: number
+  public currentTerm: number = 0
   /**
    * Индекс последней зафиксированной записи в логе.
    * @public
    * @type {number}
    */
-  public commitIndex: number
+  public commitIndex: number = 0
   /**
    * Индекс последней записи в логе.
    * @public
    * @type {number}
    */
-  public lastApplied: number
+  public lastApplied: number = 0
   /**
    * За кого голосует текущий узел.
    * @public
    * @type {number|null}
    * */
-  public votedFor: number | null
+  public votedFor: number | null = null
 
   /**
    * Список всех записей (см {@link LogEntryDto}).
    * @private
    * @type {LogEntryDto}
    * */
-  private log: LogEntryDto[]
+  private log: LogEntryDto[] = [{ index: 0, term: 0, command: null }]
   /**
    * Индекс следующей записи лога для каждого фоловера.
    * @private
    * @type {number[]}
    * */
-  private nextIndex: number[]
+  private nextIndex: number[] = []
   /**
    * Индекс последней принятой записи лога для каждого фоловера.
    * @private
    * @type {number[]}
    * */
-  private matchIndex: number[]
+  private matchIndex: number[] = []
   /**
    * Key/value хранилище.
    * @private

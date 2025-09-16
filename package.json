@@ -66,6 +66,7 @@
     "webpack-node-externals": "^3.0.0"
   },
   "jest": {
+    "preset": "ts-jest",
     "moduleFileExtensions": [
       "js",
       "json",

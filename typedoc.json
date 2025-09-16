@@ -5,5 +5,6 @@
   "excludePrivate": false,
   "excludeProtected": false,
   "readme": "README.md",
-  "plugin": ["typedoc-github-theme"]
+  "plugin": ["typedoc-github-theme"],
+  "name": "Raft"
 }
