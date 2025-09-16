@@ -3,80 +3,78 @@ import { State } from '../enum'
 import { LogEntryDto } from '../dto/append-entries.dto'
 
 /**
- * @class
- * @implements {@link StorageInterface}
- * @description Реализация хранилища RAFT в памяти.
+ * @class - Реализация хранилища RAFT в памяти.
  */
 export class InMemoryService implements StorageInterface {
   /**
+   * Текущее состояние ноды.
    * @public
    * @type {@link State}
-   * @description Текущее состояние ноды.
    */
   public state: State
   /**
+   * Текущий срок.
    * @public
    * @type {number}
-   * @description Текущий срок.
    */
   public currentTerm: number
   /**
+   * Индекс последней зафиксированной записи в логе.
    * @public
    * @type {number}
-   * @description Индекс последней зафиксированной записи в логе.
    */
   public commitIndex: number
   /**
+   * Индекс последней записи в логе.
    * @public
    * @type {number}
-   * @description Индекс последней записи в логе.
    */
   public lastApplied: number
   /**
+   * За кого голосует текущий узел.
    * @public
    * @type {number|null}
-   * @description За кого голосует текущий узел.
    * */
   public votedFor: number | null
 
   /**
+   * Список всех записей (см {@link LogEntryDto}).
    * @private
    * @type {LogEntryDto}
-   * @description Список всех записей (см {@link LogEntryDto}).
    * */
   private log: LogEntryDto[]
   /**
+   * Индекс следующей записи лога для каждого фоловера.
    * @private
    * @type {number[]}
-   * @description Индекс следующей записи лога для каждого фоловера.
    * */
   private nextIndex: number[]
   /**
+   * Индекс последней принятой записи лога для каждого фоловера.
    * @private
    * @type {number[]}
-   * @description Индекс последней принятой записи лога для каждого фоловера.
    * */
   private matchIndex: number[]
   /**
+   * Key/value хранилище.
    * @private
    * @type {Map<string, string>}
-   * @description Key/value хранилище.
    * */
   private kvStore: Map<string, string> = new Map()
 
   /**
+   * Получает список записей.
    * @public
-   * @description Получает список записей.
-   * @returns {LogEntryDto[]} Массив записей лога. (См. {@link LogEntryDto})
+   * @returns {LogEntryDto[]} Массив записей лога.
    */
   public getLogs(): LogEntryDto[] {
     return this.log
   }
 
   /**
+   * Получает список записей.
    * @public
-   * @description Получает список записей.
-   * @param {LogEntryDto} log - Параметры для записи в логи (См. {@link LogEntryDto})
+   * @param {LogEntryDto} log - Параметры для записи в логи.
    * @returns {boolean} Результат записи в логи
    */
   public addLog(log: LogEntryDto): boolean {
@@ -86,8 +84,8 @@ export class InMemoryService implements StorageInterface {
   }
 
   /**
+   * Удаляет лог по индексу записи.
    * @public
-   * @description Удаляет лог по индексу записи.
    * @param {number} index - Параметры для удаления лога
    * @returns {boolean} Результат удаления
    */
@@ -97,16 +95,16 @@ export class InMemoryService implements StorageInterface {
   }
 
   /**
+   * Получить массив nextIndex.
    * @public
-   * @description Получить массив nextIndex
    * @returns {number[]}
    */
   public getNextIndex(): number[] {
     return this.nextIndex
   }
   /**
+   * Обновить nextIndex.
    * @public
-   * @description Обновить nextIndex
    * @param {number} serviceIndex - Индекс сервиса
    * @param {number} logIndex - Индекс записи
    * @returns {boolean}
@@ -116,8 +114,8 @@ export class InMemoryService implements StorageInterface {
     return true
   }
   /**
+   * Заменить все nextIndex.
    * @public
-   * @description Заменить все nextIndex
    * @param {number[]} index - Индекс сервиса
    * @returns {boolean}
    */
@@ -126,16 +124,16 @@ export class InMemoryService implements StorageInterface {
     return true
   }
   /**
+   * Получить массив matchIndex.
    * @public
-   * @description Получить массив matchIndex
    * @returns {number[]}
    */
   public getMatchIndex(): number[] {
     return this.matchIndex
   }
   /**
+   * Обновить matchIndex.
    * @public
-   * @description Обновить matchIndex
    * @param {number} serviceIndex - Индекс сервиса
    * @param {number} logIndex - Индекс записи
    * @returns {boolean}
@@ -145,8 +143,8 @@ export class InMemoryService implements StorageInterface {
     return true
   }
   /**
+   * Заменить все matchIndex.
    * @public
-   * @description Заменить все matchIndex
    * @param {number[]} index - Индекс сервиса
    * @returns {boolean}
    */
@@ -156,8 +154,8 @@ export class InMemoryService implements StorageInterface {
   }
 
   /**
+   * Создаем записи в KV хранилище
    * @public
-   * @description Создаем записи в KV хранилище
    * @property {string} key - Ключ
    * @property {string} value - Значение
    * @returns {boolean}
@@ -168,8 +166,8 @@ export class InMemoryService implements StorageInterface {
   }
 
   /**
+   * Получить значение из KV хранилища
    * @public
-   * @description Получить значение из KV хранилища
    * @property {string} key - Ключ
    * @returns {string|undefined}
    * */

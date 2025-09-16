@@ -5,5 +5,5 @@
   "excludePrivate": false,
   "excludeProtected": false,
   "readme": "README.md",
-  "theme": "default"
+  "plugin": ["typedoc-github-theme"]
 }

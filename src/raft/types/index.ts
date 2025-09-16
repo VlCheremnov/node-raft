@@ -1,6 +1,6 @@
 /**
+ * Ответ при голосовании за кандидата.
  * @typedef {Object} RequestVoteResult
- * @description Ответ при голосовании за кандидата.
  * @property {number} term - Срок (term) голосования.
  * @property {boolean} voteGranted - Указывает, голосуем за текущего кандидата или нет.
  */
@@ -10,8 +10,8 @@ export interface RequestVoteResult {
 }
 
 /**
+ * Ответ фоловера лидеру в heartbeats.
  * @typedef {Object} AppendEntriesResult
- * @description Ответ фоловера лидеру в heartbeats.
  * @property {number} term - Срок (term) голосования.
  * @property {boolean} success - Статус запроса (true/false).
  */
@@ -21,8 +21,8 @@ export interface AppendEntriesResult {
 }
 
 /**
+ * Конфиг Raft консенсуса, содержит служебные данные.
  * @typedef {Object} ServerConfig
- * @description Конфиг Raft консенсуса, содержит служебные данные.
  * @property {number} index - Index текущего узла в кластере (уникальный инкремент для каждого узла).
  * @property {string[]} servers - Массив узлов (localhost:3000, localhost:3001 ...).
  * @property {number} heartbeatIntervalMs - Таймер опроса фоловеров.

@@ -5,9 +5,9 @@ import { AppendEntriesDto } from '../dto/append-entries.dto'
 import { State } from '../enum'
 
 /**
+ * Интерфейс для реализации консенсуса RAFT.
  * @typedef {Object} RaftInterface
  * @extends {OnModuleInit}
- * @description Интерфейс для реализации консенсуса RAFT.
  * @property {() => void} stop - Остановить все таймеры и перевести состояние в фоловера.
  * @property {(params: RequestVoteDto) => RequestVoteResult} RequestVote - Запрашивает голос для выборов лидера.
  * @property {(params: AppendEntriesDto) => AppendEntriesResult} AppendEntries - Обработка запроса от лидера.

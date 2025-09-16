@@ -5,16 +5,15 @@ import { RequestVoteDto } from './../dto/request-vote.dto'
 import { AppendEntriesDto } from './../dto/append-entries.dto'
 
 /**
- * @class
- * @description Контроллер для обработки RAFT-запросов.
+ * @class Контроллер для обработки RAFT-запросов.
  */
 @Controller('raft')
 export class RaftController {
   constructor(
     /**
+     * Сервис для обработки RAFT-логики.
      * @private
      * @type {RaftService}
-     * @description Сервис для обработки RAFT-логики.
      */
     private raftService: RaftService
   ) {}
@@ -22,8 +21,8 @@ export class RaftController {
   /**
    * Обрабатывает запрос RequestVote (Запрашивает голос для выбора лидера).
    * @http {POST} /raft/request-vote
-   * @param {RequestVoteDto} params - Параметры запроса. См. {@link RequestVoteDto}.
-   * @returns {@link RequestVoteResult} Результат обработки запроса.
+   * @param {RequestVoteDto} params - Параметры запроса.
+   * @returns {RequestVoteResult} Результат обработки запроса.
    * @throws {HttpException} Если запрос некорректен (например, неверный term).
    * @example
    * POST /raft/request-vote
@@ -46,8 +45,8 @@ export class RaftController {
   /**
    * Обрабатывает запрос AppendEntries (heartbeat или добавление записей).
    * @http {POST} /raft/append-entries
-   * @param {AppendEntriesDto} params - Параметры запроса. См. {@link AppendEntriesDto}.
-   * @returns {@link AppendEntriesResult} Результат обработки запроса.
+   * @param {AppendEntriesDto} params - Параметры запроса.
+   * @returns {AppendEntriesResult} Результат обработки запроса.
    * @throws {HttpException} Если запрос некорректен (например, неверный term).
    * @example
    * POST /raft/append-entries

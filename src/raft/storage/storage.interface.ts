@@ -2,8 +2,8 @@ import { State } from '../enum'
 import { LogEntryDto } from '../dto/append-entries.dto'
 
 /**
+ * Интерфейс для хранилища данных RAFT.
  * @typedef {Object} StorageInterface
- * @description Интерфейс для хранилища данных RAFT.
  * @property {string} state - Текущее состояние узла (follower, candidate, leader).
  * @property {number} currentTerm - Текущий срок (увеличивается на стадии кандидата или при выборе нового лидера).
  * @property {number} commitIndex - Индекс последней зафиксированной записи в логе.

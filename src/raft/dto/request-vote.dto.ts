@@ -1,8 +1,8 @@
 import { IsInt } from 'class-validator'
 
 /**
+ * Параметры для выбора кандидата.
  * @class RequestVoteParams
- * @description Параметры для выбора кандидата
  * @property {number} term - Срок (term) голосования
  * @property {number} candidateId - ID кандидата
  * @property {number} lastLogIndex - Индекс последнего лога

@@ -1,56 +1,50 @@
 import { Inject, Injectable } from '@nestjs/common'
 
-import {
-  AppendEntriesResult,
-  RequestVoteResult,
-  ServerConfig,
-} from './../types'
+import { AppendEntriesResult, RequestVoteResult, ServerConfig } from '../types'
 import { RaftInterface } from './raft.interface'
 
-import { State } from './../enum'
+import { State } from '../enum'
 import { ConfigService } from '@nestjs/config'
-import { RequestVoteDto } from './../dto/request-vote.dto'
-import { AppendEntriesDto, LogEntryDto } from './../dto/append-entries.dto'
+import { RequestVoteDto } from '../dto/request-vote.dto'
+import { AppendEntriesDto, LogEntryDto } from '../dto/append-entries.dto'
 import { StorageInterface } from '../storage/storage.interface'
 
 /**
- * @class
- * @implements {@link RaftInterface}
- * @description Реализация консенсуса RAFT.
+ * @class - Реализация консенсуса RAFT.
  */
 @Injectable()
 export class RaftService implements RaftInterface {
   /**
+   * Таймаут выборов.
    * @private
    * @type {NodeJS.Timeout|null}
-   * @description Таймаут выборов
    */
   private electionTimeout: NodeJS.Timeout | null = null
   /**
+   * Интервал лидера.
    * @private
    * @type {NodeJS.Timeout|null}
-   * @description Интервал лидера
    */
   private heartbeatInterval: NodeJS.Timeout | null = null
 
   /**
+   * Конфиги RAFT консенсуса.
    * @private
-   * @type {@link ServerConfig}
-   * @description Конфиги RAFT консенсуса
+   * @type {ServerConfig}
    */
   private config: ServerConfig
 
   constructor(
     /**
+     * Сервис конфигураций.
      * @private
-     * @type {@link ConfigService}
-     * @description Сервис конфигураций
+     * @type {ConfigService}
      */
     private configService: ConfigService,
     /**
+     * Сервис хранилище данных.
      * @private
-     * @type {@link StorageInterface}
-     * @description Сервис хранилище данных
+     * @type {StorageInterface}
      */
     @Inject('RaftStorage') private readonly storage: StorageInterface
   ) {
@@ -80,18 +74,18 @@ export class RaftService implements RaftInterface {
   }
 
   /**
+   * Хук инициализации сервиса.
    * @public
    * @returns {void}
-   * @description Хук инициализации сервиса
    */
   public onModuleInit(): void {
     this.resetElectionTimeout()
   }
 
   /**
+   * Останавливает сервис.
    * @public
    * @returns {void}
-   * @description Останавливает сервис
    */
   public stop(): void {
     this.storage.state = State.Follower
@@ -105,10 +99,10 @@ export class RaftService implements RaftInterface {
   }
 
   /**
+   * Запрашивает голос для выборов лидера.
    * @public
-   * @description Запрашивает голос для выборов лидера
-   * @param {RequestVoteDto} params - Параметры запроса голосования См. {@link RequestVoteDto}
-   * @returns {@link RequestVoteResult} Результат голосования
+   * @param {RequestVoteDto} params - Параметры запроса голосования.
+   * @returns {RequestVoteResult} Результат голосования
    */
   public RequestVote(params: RequestVoteDto): RequestVoteResult {
     if (params.term < this.storage.currentTerm) {
@@ -142,10 +136,10 @@ export class RaftService implements RaftInterface {
   }
 
   /**
+   * Обработка запроса от лидера.
    * @public
-   * @param {AppendEntriesDto} params - Параметры запроса См. {@link AppendEntriesDto}
-   * @returns {@link AppendEntriesResult}
-   * @description Обработка запроса от лидера
+   * @param {AppendEntriesDto} params - Параметры запроса.
+   * @returns {AppendEntriesResult}
    * */
   public AppendEntries(params: AppendEntriesDto): AppendEntriesResult {
     if (params.term < this.storage.currentTerm)
@@ -200,8 +194,8 @@ export class RaftService implements RaftInterface {
   }
 
   /**
+   * Создаем записи в KV хранилище.
    * @public
-   * @description Создаем записи в KV хранилище
    * @property {string} key - Ключ
    * @property {string} value - Значение
    * @returns {boolean}
@@ -223,8 +217,8 @@ export class RaftService implements RaftInterface {
   }
 
   /**
+   * Получить значение из KV хранилища.
    * @public
-   * @description Получить значение из KV хранилища
    * @property {string} key - Ключ
    * @returns {string|undefined}
    * */
@@ -233,8 +227,8 @@ export class RaftService implements RaftInterface {
   }
 
   /**
+   * Получить текущее состояние ноды.
    * @public
-   * @description Получить текущее состояние ноды
    * @returns {enum State}
    * */
   public getState(): State {
@@ -242,9 +236,9 @@ export class RaftService implements RaftInterface {
   }
 
   /**
+   * После истечения таймаута запускаем голосование на переизбрания лидера.
    * @private
    * @returns {Promise void}
-   * @description После истечения таймаута запускаем голосование на переизбрания лидера
    * */
   private async handleElectionTimeout(): Promise<void> {
     if (this.storage.state === State.Leader) return
@@ -264,8 +258,8 @@ export class RaftService implements RaftInterface {
   }
 
   /**
+   * Запрос для RequestVote и подсчет голосов (HTTP POST к другим нодам).
    * @private
-   * @description Запрос для RequestVote и подсчет голосов (HTTP POST к другим нодам)
    * @returns {Promise boolean}
    * */
   private async sendRequestVote(): Promise<boolean> {
@@ -298,8 +292,8 @@ export class RaftService implements RaftInterface {
   }
 
   /**
+   * Избирает текущую ноду лидером и запускает heartbeat.
    * @private
-   * @description Избирает текущую ноду лидером и запускает heartbeat
    * @returns {void}
    * */
   private becomeLeader(): void {
@@ -319,8 +313,8 @@ export class RaftService implements RaftInterface {
   }
 
   /**
+   * Отправляем heartbeat на другие ноды.
    * @private
-   * @description Отправляем heartbeat на другие ноды
    * @returns {Promise void}
    * */
   private async sendHeartbeat(): Promise<void> {
@@ -361,11 +355,11 @@ export class RaftService implements RaftInterface {
   }
 
   /**
+   * Обрабатываем ответ heartbeat от другой ноды.
    * @private
-   * @description Обрабатываем ответ heartbeat от другой ноды
-   * @param {AppendEntriesResult} result - Ответ ноды См. {@link AppendEntriesResult}
+   * @param {AppendEntriesResult} result - Ответ ноды.
    * @param {number} index - Индекс ноды, от которой поступил ответ
-   * @returns {@link AppendEntriesResult}
+   * @returns {AppendEntriesResult}
    * */
   private handleHeartbeatResponse(
     result: AppendEntriesResult,
@@ -391,8 +385,8 @@ export class RaftService implements RaftInterface {
   }
 
   /**
+   * Обрабатываем ошибку heartbeat от другой ноды.
    * @private
-   * @description Обрабатываем ошибку heartbeat от другой ноды
    * @returns {{ success: boolean }} Результат обработки запроса, где success указывает, успешно ли выполнено сохранение
    * */
   private handleHeartbeatError(): { success: boolean } {
@@ -400,8 +394,8 @@ export class RaftService implements RaftInterface {
   }
 
   /**
+   * Обновить commitIndex.
    * @private
-   * @description Обновить commitIndex
    * @returns {void}
    * */
   private updateCommitIndex(): void {
@@ -427,8 +421,8 @@ export class RaftService implements RaftInterface {
   }
 
   /**
+   * Рандомное число от и до.
    * @private
-   * @description Рандомное число от и до
    * @param {number} min - Минимальное число
    * @param {number} max - Максимальное число
    * @returns {number} Рандомное число
@@ -438,8 +432,8 @@ export class RaftService implements RaftInterface {
   }
 
   /**
+   * Сброс таймаута выборов.
    * @private
-   * @description Сброс таймаута выборов
    * @returns {void}
    * */
   private resetElectionTimeout(): void {
@@ -457,8 +451,8 @@ export class RaftService implements RaftInterface {
   }
 
   /**
+   * Применить логи к KV хранилище.
    * @private
-   * @description Применить логи к KV хранилище
    * @returns {void}
    * */
   private applyLogs(): void {
