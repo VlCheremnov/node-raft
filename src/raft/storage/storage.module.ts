@@ -5,7 +5,7 @@ import { InMemoryService } from './in-memory.service'
   providers: [
     {
       provide: 'RaftStorage',
-      useClass: InMemoryService, // Можно заменить на RedisStorage
+      useClass: InMemoryService,
     },
   ],
   exports: ['RaftStorage'],

@@ -4,9 +4,10 @@ import { RaftService } from './core/raft.service'
 import { RaftController } from './core/raft.controller'
 import { KvController } from './core/kv.controller'
 import { StorageModule } from './storage/storage.module'
+import { RaftTransport } from './transport/transport.module'
 
 @Module({
-  imports: [StorageModule],
+  imports: [StorageModule, RaftTransport],
   providers: [ConfigService, RaftService],
   controllers: [RaftController, KvController],
   exports: [RaftService],

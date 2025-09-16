@@ -8,6 +8,7 @@ import { ConfigService } from '@nestjs/config'
 import { RequestVoteDto } from '../dto/request-vote.dto'
 import { AppendEntriesDto, LogEntryDto } from '../dto/append-entries.dto'
 import { StorageInterface } from '../storage/storage.interface'
+import { TransportInterface } from '../transport/transport.interface'
 
 /**
  * @class - Реализация консенсуса RAFT.
@@ -46,7 +47,13 @@ export class RaftService implements RaftInterface {
      * @private
      * @type {StorageInterface}
      */
-    @Inject('RaftStorage') private readonly storage: StorageInterface
+    @Inject('RaftStorage') private readonly storage: StorageInterface,
+    /**
+     * Сервис транспорт для запросов между нодами.
+     * @private
+     * @type {TransportInterface}
+     */
+    @Inject('RaftTransport') private readonly transport: TransportInterface
   ) {
     this.config = {
       servers: this.configService.get<string>('PEERS', '').split(','),
@@ -275,11 +282,7 @@ export class RaftService implements RaftInterface {
         lastLogTerm: logs[logs.length - 1].term,
       }
 
-      return fetch(`${addr}/raft/request-vote`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(params),
-      }).then((res) => res.json() as Promise<RequestVoteResult>)
+      return this.transport.requestVote(addr, params)
     })
 
     const results = await Promise.allSettled(promises)
@@ -339,12 +342,8 @@ export class RaftService implements RaftInterface {
         leaderCommit: this.storage.commitIndex,
       }
 
-      return fetch(`${addr}/raft/append-entries`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(params),
-      })
-        .then((res) => res.json() as Promise<AppendEntriesResult>)
+      return this.transport
+        .heartbeat(addr, params)
         .then((result) => this.handleHeartbeatResponse(result, i))
         .catch(() => this.handleHeartbeatError())
     })
