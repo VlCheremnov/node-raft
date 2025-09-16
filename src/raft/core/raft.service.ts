@@ -245,7 +245,7 @@ export class RaftService implements RaftInterface {
   /**
    * После истечения таймаута запускаем голосование на переизбрания лидера.
    * @private
-   * @returns {Promise void}
+   * @returns {Promise<void>}
    * */
   private async handleElectionTimeout(): Promise<void> {
     if (this.storage.state === State.Leader) return
@@ -267,7 +267,7 @@ export class RaftService implements RaftInterface {
   /**
    * Запрос для RequestVote и подсчет голосов (HTTP POST к другим нодам).
    * @private
-   * @returns {Promise boolean}
+   * @returns {Promise<boolean>}
    * */
   private async sendRequestVote(): Promise<boolean> {
     const logs = this.storage.getLogs()
@@ -318,7 +318,7 @@ export class RaftService implements RaftInterface {
   /**
    * Отправляем heartbeat на другие ноды.
    * @private
-   * @returns {Promise void}
+   * @returns {Promise<void>}
    * */
   private async sendHeartbeat(): Promise<void> {
     if (this.storage.state !== State.Leader) return
