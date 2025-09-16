@@ -1,0 +1,9 @@
+{
+  "entryPoints": ["src/**/*.ts"],
+  "out": "docs",
+  "tsconfig": "tsconfig.json",
+  "excludePrivate": false,
+  "excludeProtected": false,
+  "readme": "README.md",
+  "theme": "default"
+}

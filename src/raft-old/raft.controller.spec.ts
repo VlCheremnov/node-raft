@@ -1,6 +1,6 @@
 import { Test, TestingModule } from '@nestjs/testing'
-import { RaftController } from './raft.controller'
-import { RaftService } from './raft.service'
+import { RaftController } from './../raft/core/raft.controller'
+import { RaftService } from './../raft/core/raft.service'
 import { ConfigService } from '@nestjs/config'
 
 describe('RaftController', () => {

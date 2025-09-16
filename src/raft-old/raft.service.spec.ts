@@ -1,10 +1,10 @@
 import { Test, TestingModule } from '@nestjs/testing'
-import { RaftService } from './raft.service'
+import { RaftService } from '../raft/core/raft.service'
 import { ConfigService } from '@nestjs/config'
-import { State } from './enum'
-import { CommandDto, LogEntryDto } from './dto/append-entries.dto'
+import { State } from '../raft/enum'
+import { CommandDto, LogEntryDto } from '../raft/dto/append-entries.dto'
 import fetchMock from 'jest-fetch-mock'
-import { AppendEntriesResult, RequestVoteResult } from './types'
+import { RequestVoteResult, AppendEntriesResult } from '../raft/types'
 
 describe('RaftService', () => {
   let service: RaftService

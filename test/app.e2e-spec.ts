@@ -4,7 +4,7 @@ import * as request from 'supertest'
 import { App } from 'supertest/types'
 import { AppModule } from './../src/app.module'
 import { ConfigService } from '@nestjs/config'
-import { RaftService } from '../src/raft/raft.service'
+import { RaftService } from '../src/raft/core/raft.service'
 import { State } from '../src/raft/enum'
 
 enum KvDataKeys {
