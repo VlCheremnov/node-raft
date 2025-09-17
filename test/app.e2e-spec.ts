@@ -6,6 +6,8 @@ import { AppModule } from './../src/app.module'
 import { ConfigService } from '@nestjs/config'
 import { RaftService } from '../src/raft/core/raft.service'
 import { State } from '../src/raft/enum'
+import { StorageInterface } from '../src/raft/storage/storage.interface'
+import { RaftInterface } from '../src/raft/core/raft.interface'
 
 enum KvDataKeys {
   Test1 = 'key-1',
@@ -56,13 +58,15 @@ const waitForCondition: (
 
 const waitCommitLogs = (apps: INestApplication<App>[], index: number) =>
   waitForCondition(() => {
-    const services: unknown[] = apps.map((app) => app.get(RaftService))
-
-    const okCommitIndex = services.every(
-      (service: { commitIndex: number }) => service.commitIndex === index
+    const storages: StorageInterface[] = apps.map((app) =>
+      app.get('RaftStorage')
     )
-    const okLastApplied = services.every(
-      (service: { lastApplied: number }) => service.lastApplied === index
+
+    const okCommitIndex = storages.every(
+      (storage) => storage.commitIndex === index
+    )
+    const okLastApplied = storages.every(
+      (storage) => storage.lastApplied === index
     )
 
     return okCommitIndex && okLastApplied
@@ -70,8 +74,9 @@ const waitCommitLogs = (apps: INestApplication<App>[], index: number) =>
 
 const waitBecomeLeader = (apps: INestApplication<App>[]) =>
   waitForCondition(() => {
-    const states = apps.map((app) => app.get(RaftService).getState())
-    const leaders = states.filter((state) => state === State.Leader).length
+    const leaders = apps
+      .map((app) => app.get<StorageInterface>('RaftStorage').state)
+      .filter((state) => state === State.Leader).length
 
     return leaders === 1
   })
@@ -125,7 +130,7 @@ describe('AppController (e2e)', () => {
   describe('KV:', () => {
     it('Set key на лидере и репликация на фолловеры', async () => {
       for (const app of apps) {
-        const raftService = app.get(RaftService)
+        const raftService = app.get<RaftInterface>(RaftService)
 
         await request(app.getHttpServer())
           .post(`/kv/set`)
@@ -158,7 +163,7 @@ describe('AppController (e2e)', () => {
     })
     it('Несколько set, репликация и get key на всех нодах', async () => {
       for (const app of apps) {
-        const raftService = app.get(RaftService)
+        const raftService = app.get<RaftInterface>(RaftService)
 
         const state = raftService.getState()
 
@@ -212,13 +217,12 @@ describe('AppController (e2e)', () => {
     it('Новый лидер после таймаута (если лидер не шлёт heartbeat).', async () => {
       for (let i = 0; i < apps.length; i++) {
         const app = apps[i]
-        const raftService = app.get(RaftService)
+        const raftService = app.get<RaftInterface>(RaftService)
 
         const state = raftService.getState()
 
         if (state === State.Leader) {
           raftService.stop()
-          ;(raftService as any).state = State.Follower
           break
         }
 
