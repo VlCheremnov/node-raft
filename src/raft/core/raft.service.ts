@@ -57,18 +57,15 @@ export class RaftService implements RaftInterface {
   ) {
     this.config = {
       servers: this.configService.get<string>('PEERS', '').split(','),
-      index: this.configService.get<number>('INDEX', 0),
-      heartbeatIntervalMs: this.configService.get<number>(
-        'HEARTBEAT_INTERVAL_MS',
-        100
+      index: Number(this.configService.get<number>('INDEX', 0)),
+      heartbeatIntervalMs: Number(
+        this.configService.get<number>('HEARTBEAT_INTERVAL_MS', 100)
       ),
-      electionTimeoutMinMs: this.configService.get<number>(
-        'ELECTION_TIMEOUT_MIN_MS',
-        150
+      electionTimeoutMinMs: Number(
+        this.configService.get<number>('ELECTION_TIMEOUT_MIN_MS', 150)
       ),
-      electionTimeoutMaxMs: this.configService.get<number>(
-        'ELECTION_TIMEOUT_MAX_MS',
-        300
+      electionTimeoutMaxMs: Number(
+        this.configService.get<number>('ELECTION_TIMEOUT_MAX_MS', 300)
       ),
     }
 
@@ -309,7 +306,7 @@ export class RaftService implements RaftInterface {
     this.storage.setMatchIndex(matchIndex.map(() => 0))
 
     this.heartbeatInterval = setInterval(
-      () => this.sendHeartbeat(),
+      async () => await this.sendHeartbeat(),
       this.config.heartbeatIntervalMs
     )
     if (this.electionTimeout) clearTimeout(this.electionTimeout)
