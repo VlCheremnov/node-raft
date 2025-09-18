@@ -33,6 +33,14 @@ const sleep = async (ms: number) =>
 const isAppRunning = (app: INestApplication<App>): boolean =>
   !!(app.getHttpServer() as any)?.address()
 
+const findLeader = (
+  apps: INestApplication<App>[]
+): INestApplication<App> | undefined =>
+  apps.find(
+    (app) =>
+      isAppRunning(app) && app.get(RaftService).getState() === State.Leader
+  )
+
 const waitForCondition: (
   conditionFunc: () => boolean,
   attemptsLength?: number,
@@ -258,10 +266,7 @@ describe('AppController (e2e)', () => {
 
       await waitBecomeLeader(apps)
 
-      const leader = apps.find(
-        (app) =>
-          isAppRunning(app) && app.get(RaftService).getState() === State.Leader
-      )!
+      const leader = findLeader(apps)!
 
       await request(leader.getHttpServer())
         .post(`/kv/set`)
@@ -294,10 +299,7 @@ describe('AppController (e2e)', () => {
         }
       }
 
-      const leader = apps.find(
-        (app) =>
-          isAppRunning(app) && app.get(RaftService).getState() === State.Leader
-      )!
+      const leader = findLeader(apps)!
 
       await request(leader.getHttpServer())
         .post(`/kv/set`)
@@ -339,5 +341,75 @@ describe('AppController (e2e)', () => {
     })
   })
 
-  describe('Выборы:', () => {})
+  describe('Дополнительные сценарии консенсуса:', () => {
+    it('Смена лидера во время репликации и консистентность после', async () => {
+      const leaderApp = findLeader(apps)!
+
+      const leaderStorage = leaderApp.get<StorageInterface>('RaftStorage')
+      const baseIndex = leaderStorage.getLogs().length - 1
+
+      await request(leaderApp.getHttpServer())
+        .post(`/kv/set`)
+        .send({ key: KvDataKeys.Test1, value: 'preempt-value' })
+        .expect(200)
+        .then(({ body }) => expect(body.success).toBe(true))
+
+      leaderApp.get(RaftService).stop()
+      await leaderApp.close()
+
+      const liveApps = apps.filter(isAppRunning)
+      await waitBecomeLeader(liveApps)
+
+      const newLeader = findLeader(liveApps)!
+
+      await request(newLeader.getHttpServer())
+        .post(`/kv/set`)
+        .send({ key: KvDataKeys.Test1, value: 'post-failover' })
+        .expect(200)
+        .then(({ body }) => expect(body.success).toBe(true))
+
+      const expectedIndex = baseIndex + 2
+      await waitCommitLogs(liveApps, expectedIndex)
+
+      for (const app of liveApps) {
+        await request(app.getHttpServer())
+          .post(`/kv/get`)
+          .send({ key: KvDataKeys.Test1 })
+          .expect(200)
+          .then(({ body }) => {
+            expect(body.value).toBe('post-failover')
+          })
+      }
+    })
+
+    it('Консистентность после коммита на всех живых нодах', async () => {
+      const liveApps = apps.filter(isAppRunning)
+      await waitBecomeLeader(liveApps)
+
+      const isLeader = (app: INestApplication<App>) =>
+        app.get(RaftService).getState() === State.Leader
+      const leader = liveApps.find(isLeader)!
+
+      const leaderStorage = leader.get<StorageInterface>('RaftStorage')
+      const baseIndex = leaderStorage.commitIndex
+
+      await request(leader.getHttpServer())
+        .post(`/kv/set`)
+        .send({ key: KvDataKeys.Test2, value: 'consistent' })
+        .expect(200)
+        .then(({ body }) => expect(body.success).toBe(true))
+
+      await waitCommitLogs(liveApps, baseIndex + 1)
+
+      for (const app of liveApps) {
+        await request(app.getHttpServer())
+          .post(`/kv/get`)
+          .send({ key: KvDataKeys.Test2 })
+          .expect(200)
+          .then(({ body }) => {
+            expect(body.value).toBe('consistent')
+          })
+      }
+    })
+  })
 })

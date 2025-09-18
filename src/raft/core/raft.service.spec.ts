@@ -476,6 +476,62 @@ describe('RaftService', () => {
     })
   })
 
+  describe('Правила коммита и применение логов (доп. кейсы):', () => {
+    it('Лидер коммитит только записи своего текущего term', () => {
+      ;(service as any).config.servers = ['1', '2', '3', '4', '5']
+
+      // Становимся лидером term=2
+      storage.state = State.Leader
+      storage.currentTerm = 2
+
+      const logs = storage.getLogs()
+
+      logs.push({ index: 1, term: 1, command: { key: 'k', value: 'old' } })
+
+      storage.setMatchIndex([0, 1, 1, 1, 0])
+
+      expect(storage.commitIndex).toBe(0)
+      ;(service as any).updateCommitIndex()
+
+      expect(storage.commitIndex).toBe(0)
+      expect(storage.lastApplied).toBe(0)
+
+      logs.push({ index: 2, term: 2, command: { key: 'k', value: 'new' } })
+
+      storage.setMatchIndex([0, 2, 2, 0, 0])
+      ;(service as any).updateCommitIndex()
+
+      expect(storage.commitIndex).toBe(2)
+      expect(storage.lastApplied).toBe(2)
+      expect((service as any).getValue('k')).toBe('new')
+    })
+
+    it('Follower: leaderCommit больше его lastIndex -> commitIndex=min(leaderCommit, lastIndex) и applyLogs()', () => {
+      storage.state = State.Follower
+      storage.currentTerm = 1
+
+      storage.addLog({ index: 1, term: 1, command: { key: 'a', value: '1' } })
+      storage.addLog({ index: 2, term: 1, command: { key: 'b', value: '2' } })
+
+      const res = service.AppendEntries({
+        term: 1,
+        leaderId: 0,
+        prevLogIndex: 2,
+        prevLogTerm: 1,
+        leaderCommit: 10,
+        entries: [],
+      } as any)
+
+      expect(res.success).toBe(true)
+
+      expect(storage.commitIndex).toBe(2)
+
+      expect(storage.lastApplied).toBe(2)
+      expect((service as any).getValue('a')).toBe('1')
+      expect((service as any).getValue('b')).toBe('2')
+    })
+  })
+
   it('should be defined', () => {
     expect(service).toBeDefined()
   })
