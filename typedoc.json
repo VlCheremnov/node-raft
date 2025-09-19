@@ -1,5 +1,6 @@
 {
   "entryPoints": ["src/**/*.ts"],
+  "exclude": ["**/*.spec.*", "**/*.module.*", "**/main.ts"],
   "out": "docs",
   "tsconfig": "tsconfig.json",
   "excludePrivate": false,
